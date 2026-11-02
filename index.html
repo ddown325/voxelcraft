@@ -111,10 +111,35 @@
   .inv-slot .slot-count { color: #fff; }
   .inv-sep { height: 12px; }
   #creative-palette { margin-top: 4px; }
+  #palette-grid, #palette-items { max-height: 190px; overflow-y: auto; padding-right: 4px; }
+  #palette-grid::-webkit-scrollbar, #palette-items::-webkit-scrollbar { width: 8px; }
+  #palette-grid::-webkit-scrollbar-thumb, #palette-items::-webkit-scrollbar-thumb { background: #8b8b8b; border: 2px solid #c6c6c6; }
   #cursor-stack { position: fixed; width: 46px; height: 46px; pointer-events: none; z-index: 60; transform: translate(-23px, -23px); }
   #cursor-stack .slot-icon { inset: 0; }
   #cursor-stack .slot-count { right: 0; bottom: -2px; }
   #inv-tip { margin-top: 10px; font-size: 11px; color: #555555; }
+
+  /* ---------- crafting ---------- */
+  #crafting-box { margin-bottom: 4px; }
+  .craft-row { display: flex; align-items: center; gap: 14px; margin: 0 0 10px 2px; }
+  .craft-grid { grid-template-columns: repeat(3, 54px); }
+  .craft-grid.small .c3 { display: none; }   /* pocket 2×2 hides the outer ring */
+  .craft-arrow { font-size: 30px; font-weight: 700; color: #3f3f3f; line-height: 1; }
+  .result-slot { width: 62px; height: 62px; border-width: 3px; }
+  .result-slot .slot-icon { inset: 6px; }
+  .slot-dur { position: absolute; left: 5px; right: 5px; bottom: 3px; height: 4px; background: rgba(0,0,0,0.6); border-radius: 2px; overflow: hidden; display: none; }
+  .slot-dur i { display: block; height: 100%; width: 100%; background: #4fc94f; }
+
+  /* ---------- furnace ---------- */
+  #furnace { z-index: 45; }
+  #furnace .inv-panel { background: #c6c6c6; border: 3px solid; border-color: #ffffff #555555 #555555 #ffffff; border-radius: 3px; padding: 14px 18px; box-shadow: 0 16px 50px rgba(0,0,0,0.55); }
+  .furnace-row { display: flex; align-items: center; gap: 16px; margin: 6px 2px 10px; }
+  .furnace-col { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .furn-flame { width: 24px; height: 24px; background: #373737; border: 1px solid #555; position: relative; overflow: hidden; }
+  .furn-flame i { position: absolute; left: 0; right: 0; bottom: 0; background: linear-gradient(#f6d33c, #d97a2a); display: block; }
+  .furn-cook { width: 70px; height: 14px; background: #373737; border: 1px solid #555; position: relative; overflow: hidden; flex: 0 0 auto; }
+  .furn-cook i { position: absolute; left: 0; top: 0; bottom: 0; background: #e8e8e8; display: block; }
+  #furn-tip { font-size: 11px; color: #555555; max-width: 340px; line-height: 1.5; }
 
   /* ---------- confirm dialog ---------- */
   #confirm p { font-size: 14px; color: #c9d4e0; line-height: 1.6; margin-bottom: 4px; }
@@ -160,7 +185,7 @@
 <!-- Main menu -->
 <div id="menu" class="overlay">
   <h1 class="title pix">VOXELCRAFT</h1>
-  <div class="tagline">A voxel world in one file · survival · water first-class</div>
+  <div class="tagline">A voxel world in one file · survival · crafting · water first-class</div>
   <div class="menu-btns">
     <button id="btn-continue" class="mc hidden">Continue World</button>
     <button id="btn-new" class="mc">New World · Survival</button>
@@ -168,7 +193,7 @@
     <button id="btn-settings" class="mc gray">Settings</button>
     <button id="btn-howto" class="mc gray">How to Play</button>
   </div>
-  <div class="foot">Three.js · survival &amp; creative · water first-class · saves in your browser</div>
+  <div class="foot">Three.js · survival &amp; creative · crafting, furnaces &amp; tools · water first-class · saves in your browser</div>
 </div>
 
 <!-- Pause -->
@@ -209,12 +234,12 @@
       <tr><td>W A S D</td><td>Move</td></tr>
       <tr><td>Mouse</td><td>Look</td></tr>
       <tr><td>Left click (hold)</td><td>Mine the targeted block — cracks show progress</td></tr>
-      <tr><td>Right click</td><td>Place the selected block</td></tr>
+      <tr><td>Right click</td><td>Place the selected block · use crafting tables &amp; furnaces · pour/scoop buckets</td></tr>
       <tr><td>Middle click</td><td>Pick the targeted block</td></tr>
       <tr><td>1–9 / wheel</td><td>Select hotbar slot</td></tr>
-      <tr><td>E</td><td>Open inventory</td></tr>
+      <tr><td>E</td><td>Open inventory &amp; pocket crafting (2×2)</td></tr>
       <tr><td>Space</td><td>Jump — you must jump up full blocks · swim up · double-tap to fly (creative)</td></tr>
-      <tr><td>Shift</td><td>Sneak / descend</td></tr>
+      <tr><td>Shift</td><td>Sneak / descend · right-click THROUGH a table or furnace to place against it</td></tr>
       <tr><td>Ctrl</td><td>Sprint</td></tr>
       <tr><td>V</td><td>Toggle creative mode</td></tr>
       <tr><td>F</td><td>Toggle flight (creative only)</td></tr>
@@ -223,15 +248,19 @@
     </table>
     <h3>Tips</h3>
     <table>
-      <tr><td>Saves</td><td>Automatic — blocks, inventory &amp; position persist in this browser</td></tr>
-      <tr><td>Flowing water</td><td>Water spreads, pours into holes and forms waterfalls. Two sources side by side make an infinite pool</td></tr>
+      <tr><td>Saves</td><td>Automatic — blocks, inventory, furnaces &amp; position persist in this browser</td></tr>
+      <tr><td>Getting started</td><td>Punch a tree → craft planks → sticks → a crafting table → a wooden pickaxe</td></tr>
+      <tr><td>Crafting</td><td>2×2 grid in your inventory, full 3×3 at a crafting table (right-click it)</td></tr>
+      <tr><td>Tools</td><td>Pickaxes mine stone-family blocks — without one they drop nothing. Wood → stone → iron → diamond, each faster and tougher</td></tr>
+      <tr><td>Furnace</td><td>Craft one from 8 cobblestone, then smelt iron/gold ore into ingots, sand into glass, cobble into stone</td></tr>
+      <tr><td>Bucket</td><td>3 iron ingots → bucket. Scoop still water sources, pour them anywhere — moving water made easy</td></tr>
+      <tr><td>Flowing water</td><td>Water going down falls as a full sheet and re-spreads where it lands; going across it thins out over 7 blocks</td></tr>
       <tr><td>Sponge</td><td>Place it to soak up water in a 5×5×5 area — the way to un-flood a build</td></tr>
-      <tr><td>Mining</td><td>Stone drops cobblestone; everything you break goes to your inventory</td></tr>
-      <tr><td>Night</td><td>Your hand and arm follow the light — bright at noon, dim at midnight, blue underwater</td></tr>
+      <tr><td>Trees</td><td>Chop the trunk and the canopy withers away — no floating leaves</td></tr>
       <tr><td>Survival</td><td>Hearts &amp; air — falls, drowning, cactus pricks and TNT hurt; you heal when out of danger</td></tr>
-      <tr><td>TNT</td><td>Mining TNT in survival lights the fuse — get clear before it blows! Obsidian and bedrock resist</td></tr>
+      <tr><td>TNT</td><td>5 coal + 4 sand crafts TNT; mining it in survival lights the fuse — get clear!</td></tr>
       <tr><td>Gravity</td><td>Sand and gravel fall when unsupported — mine under them with care</td></tr>
-      <tr><td>Ores</td><td>Coal, iron, gold and diamond hide in the stone; diamonds live deepest</td></tr>
+      <tr><td>Ores</td><td>Coal, iron, gold and diamond hide in the stone; diamonds live deepest and need an iron pick</td></tr>
       <tr><td>Ice</td><td>Slippery underfoot — momentum carries you</td></tr>
     </table>
     <div class="modal-btns"><button id="btn-howto-done" class="mc">Done</button></div>
@@ -245,15 +274,42 @@
     <div id="creative-palette">
       <h3>Block Palette — click to grab a stack</h3>
       <div class="inv-grid" id="palette-grid"></div>
+      <h3 style="margin-top:10px">Items</h3>
+      <div class="inv-grid" id="palette-items"></div>
       <div class="inv-sep"></div>
+    </div>
+    <div id="crafting-box">
+      <h3 id="craft-title">Crafting</h3>
+      <div class="craft-row">
+        <div class="inv-grid craft-grid" id="craft-grid"></div>
+        <div class="craft-arrow">➜</div>
+        <div class="inv-slot result-slot" id="craft-result"><div class="slot-icon"></div><span class="slot-count"></span></div>
+      </div>
     </div>
     <div class="inv-grid" id="main-grid"></div>
     <div class="inv-sep"></div>
     <div class="inv-grid" id="hotbar-grid"></div>
-    <div id="inv-tip">Click: pick up / place · Right-click: split stack · Shift-click: quick move · E or Esc: close</div>
+    <div id="inv-tip">Click: pick up / place · Right-click: split · Shift-click: quick move · Right-click a crafting table or furnace to use it · E / Esc: close</div>
   </div>
 </div>
 <div id="cursor-stack" class="hidden"><div class="slot-icon"></div><span class="slot-count"></span></div>
+
+<!-- Furnace -->
+<div id="furnace" class="overlay hidden">
+  <div class="inv-panel">
+    <h3>Furnace</h3>
+    <div class="furnace-row">
+      <div class="furnace-col">
+        <div class="inv-slot" id="furn-in"><div class="slot-icon"></div><span class="slot-count"></span></div>
+        <div class="furn-flame" id="furn-flame"><i></i></div>
+        <div class="inv-slot" id="furn-fuel"><div class="slot-icon"></div><span class="slot-count"></span></div>
+      </div>
+      <div class="furn-cook" id="furn-cook"><i></i></div>
+      <div class="inv-slot result-slot" id="furn-out"><div class="slot-icon"></div><span class="slot-count"></span></div>
+    </div>
+    <div id="furn-tip">Top: what to smelt — iron ore, gold ore, sand → glass, cobble → stone, clay → bricks.<br>Fuel: coal, logs, planks, sticks. Smelting keeps going while you explore.</div>
+  </div>
+</div>
 
 <!-- Confirm -->
 <div id="confirm" class="overlay hidden">
@@ -307,11 +363,16 @@ const B = {
   WOOL_WHITE: 43, WOOL_RED: 44, WOOL_ORANGE: 45, WOOL_YELLOW: 46,
   WOOL_GREEN: 47, WOOL_BLUE: 48, WOOL_BLACK: 49,
   CACTUS: 50, DEAD_BUSH: 51, PUMPKIN: 52, TNT: 53, BOOKSHELF: 54,
+  // --- v5: crafting & smelting + the falling-water fill state ---
+  CRAFTING_TABLE: 56, FURNACE: 57,
 };
 // Flowing water occupies ids 17..23 (level 7..1). Id 16 is a source (level 8).
-const WATER_MAX_ID = 23;
-const isWaterId = (id) => id >= B.WATER && id <= WATER_MAX_ID;
-const waterLevelOf = (id) => (id === B.WATER ? 8 : (isWaterId(id) ? 8 - (id - B.WATER) : 0));
+// Id 55 is FALLING water: the distinct "going down" fill state — always full
+// height, kept alive by water above, never a source, resets distance on land.
+const WATER_FALLING = 55;
+const isWaterId = (id) => id === B.WATER || (id >= B.WATER + 1 && id <= 23) || id === WATER_FALLING;
+const isFallingWater = (id) => id === WATER_FALLING;
+const waterLevelOf = (id) => (id === B.WATER || id === WATER_FALLING ? 8 : (isWaterId(id) ? 8 - (id - B.WATER) : 0));
 const waterIdForLevel = (l) => (l >= 8 ? B.WATER : B.WATER + (8 - l));
 const T = {
   GRASS_TOP: 0, GRASS_SIDE: 1, DIRT: 2, STONE: 3, COBBLE: 4, SAND: 5, LOG_SIDE: 6,
@@ -327,6 +388,8 @@ const T = {
   WOOL_GREEN: 45, WOOL_BLUE: 46, WOOL_BLACK: 47,
   CACTUS_SIDE: 48, CACTUS_TOP: 49, DEAD_BUSH: 50,
   PUMPKIN_SIDE: 51, PUMPKIN_TOP: 52, TNT_SIDE: 53, TNT_TOP: 54, BOOKSHELF: 55,
+  CRAFT_TOP: 56, CRAFT_SIDE: 57, CRAFT_FRONT: 58,
+  FURN_FRONT: 59, FURN_SIDE: 60, FURN_TOP: 61,
 };
 
 // [px, nx, py, ny, pz, nz] atlas tiles per block (mirrors the worker table)
@@ -378,6 +441,8 @@ const TILES = {
   [B.PUMPKIN]: [51, 51, 52, 52, 51, 51],
   [B.TNT]: [53, 53, 54, 54, 53, 53],
   [B.BOOKSHELF]: [55, 55, 9, 9, 55, 55],
+  [B.CRAFTING_TABLE]: [58, 58, 56, 9, 57, 57],
+  [B.FURNACE]: [60, 60, 61, 61, 59, 59],
 };
 
 const BLOCK_NAME = {
@@ -396,6 +461,7 @@ const BLOCK_NAME = {
   [B.WOOL_ORANGE]: 'Orange Wool', [B.WOOL_YELLOW]: 'Yellow Wool', [B.WOOL_GREEN]: 'Green Wool',
   [B.WOOL_BLUE]: 'Blue Wool', [B.WOOL_BLACK]: 'Black Wool', [B.CACTUS]: 'Cactus',
   [B.DEAD_BUSH]: 'Dead Bush', [B.PUMPKIN]: 'Pumpkin', [B.TNT]: 'TNT', [B.BOOKSHELF]: 'Bookshelf',
+  [B.CRAFTING_TABLE]: 'Crafting Table', [B.FURNACE]: 'Furnace',
 };
 const BLOCK_COLOR = {
   [B.GRASS]: 0x6faa46, [B.DIRT]: 0x8a6039, [B.STONE]: 0x8d8d8d, [B.COBBLE]: 0x7f7f7f,
@@ -413,6 +479,7 @@ const BLOCK_COLOR = {
   [B.WOOL_YELLOW]: 0xf1c62e, [B.WOOL_GREEN]: 0x5e7c46, [B.WOOL_BLUE]: 0x3c44aa,
   [B.WOOL_BLACK]: 0x1d1d21, [B.CACTUS]: 0x3f7d2e, [B.DEAD_BUSH]: 0x94613c,
   [B.PUMPKIN]: 0xc87a1d, [B.TNT]: 0xd0342c, [B.BOOKSHELF]: 0xa8825a,
+  [B.CRAFTING_TABLE]: 0xa5773f, [B.FURNACE]: 0x7a7a7a,
 };
 const SOUND_FAMILY = {
   [B.GRASS]: 'grass', [B.DIRT]: 'dirt', [B.STONE]: 'stone', [B.COBBLE]: 'stone',
@@ -430,6 +497,7 @@ const SOUND_FAMILY = {
   [B.WOOL_YELLOW]: 'wool', [B.WOOL_GREEN]: 'wool', [B.WOOL_BLUE]: 'wool',
   [B.WOOL_BLACK]: 'wool', [B.CACTUS]: 'grass', [B.DEAD_BUSH]: 'grass',
   [B.PUMPKIN]: 'wood', [B.TNT]: 'wool', [B.BOOKSHELF]: 'wood',
+  [B.CRAFTING_TABLE]: 'wood', [B.FURNACE]: 'stone',
 };
 
 // Seconds to mine by hand (the break system). Bedrock deliberately absent —
@@ -447,9 +515,17 @@ const HARDNESS = {
   [B.WOOL_WHITE]: 0.5, [B.WOOL_RED]: 0.5, [B.WOOL_ORANGE]: 0.5, [B.WOOL_YELLOW]: 0.5,
   [B.WOOL_GREEN]: 0.5, [B.WOOL_BLUE]: 0.5, [B.WOOL_BLACK]: 0.5,
   [B.CACTUS]: 0.4, [B.DEAD_BUSH]: 0.05, [B.PUMPKIN]: 0.8, [B.TNT]: 0.05, [B.BOOKSHELF]: 1.3,
+  [B.CRAFTING_TABLE]: 1.0, [B.FURNACE]: 2.2,
 };
-// What a block yields when broken (stone -> cobble, like the original).
+// What a block yields when broken (stone -> cobble; ores handled in dropFor).
 const DROPS = { [B.STONE]: B.COBBLE };
+/** Resolve a block's drop AFTER all registries exist (ores yield items). */
+function dropFor(id) {
+  if (DROPS[id] !== undefined) return DROPS[id];
+  if (id === B.COAL_ORE) return ITEM.COAL;
+  if (id === B.DIAMOND_ORE) return ITEM.DIAMOND;
+  return id;
+}
 const BREAKABLE = new Set(Object.keys(HARDNESS).map(Number));
 // Blocks that obey gravity — the falling-block system.
 const GRAVITY_IDS = new Set([B.SAND, B.GRAVEL]);
@@ -463,10 +539,104 @@ const PLACEABLE = [
   B.BIRCH_LOG, B.BIRCH_LEAVES, B.BIRCH_PLANKS, B.SPRUCE_LOG, B.SPRUCE_LEAVES, B.SPRUCE_PLANKS,
   B.WOOL_WHITE, B.WOOL_RED, B.WOOL_ORANGE, B.WOOL_YELLOW, B.WOOL_GREEN, B.WOOL_BLUE, B.WOOL_BLACK,
   B.CACTUS, B.DEAD_BUSH, B.PUMPKIN, B.TNT, B.BOOKSHELF,
+  B.CRAFTING_TABLE, B.FURNACE,
 ];
 const PLANT_IDS = new Set([B.TALLGRASS, B.FLOWER_RED, B.FLOWER_YELLOW, B.DEAD_BUSH]);
 const STACK_MAX = 64;
 const NEIGH6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
+
+const LOG_IDS = new Set([B.LOG, B.BIRCH_LOG, B.SPRUCE_LOG]);
+const PLANK_IDS = new Set([B.PLANKS, B.BIRCH_PLANKS, B.SPRUCE_PLANKS]);
+const LEAF_IDS = new Set([B.LEAVES, B.BIRCH_LEAVES, B.SPRUCE_LEAVES]);
+const planksForLog = (logId) => logId === B.BIRCH_LOG ? B.BIRCH_PLANKS : (logId === B.SPRUCE_LOG ? B.SPRUCE_PLANKS : B.PLANKS);
+
+// ============================================================================
+// ITEMS — non-block things you can hold: materials, the bucket, and TOOLS.
+// Ids >= 100 never collide with block ids. Tools carry a durability on the
+// slot ({id, count, dur}); mining with the right tool is 2.5-10x faster and
+// stone-family blocks need a pickaxe of sufficient tier to drop anything.
+// ============================================================================
+const ITEM = {
+  STICK: 100, COAL: 101, IRON_INGOT: 102, GOLD_INGOT: 103, DIAMOND: 104,
+  BUCKET: 110, BUCKET_WATER: 111,
+  PICK_WOOD: 120, PICK_STONE: 121, PICK_IRON: 122, PICK_DIAMOND: 123,
+  AXE_WOOD: 130, AXE_STONE: 131, AXE_IRON: 132, AXE_DIAMOND: 133,
+  SHOVEL_WOOD: 140, SHOVEL_STONE: 141, SHOVEL_IRON: 142, SHOVEL_DIAMOND: 143,
+};
+const isItemId = (id) => id >= 100;
+const isBlockId = (id) => id > 0 && id < 100 && !!TILES[id];
+
+const TOOL_TIERS = [
+  { name: 'Wooden', tier: 1, speed: 2.5, dur: 60, head: '#9a7644' },
+  { name: 'Stone', tier: 2, speed: 4.5, dur: 132, head: '#8d8d8d' },
+  { name: 'Iron', tier: 3, speed: 7, dur: 251, head: '#d8d8d8' },
+  { name: 'Diamond', tier: 4, speed: 10, dur: 1024, head: '#4fc3c0' },
+];
+
+function buildItemRegistry() {
+  const reg = {
+    [ITEM.STICK]: { name: 'Stick', stack: 64, art: 'stick' },
+    [ITEM.COAL]: { name: 'Coal', stack: 64, art: 'coal' },
+    [ITEM.IRON_INGOT]: { name: 'Iron Ingot', stack: 64, art: 'ingot', tint: 0xd8d8d8 },
+    [ITEM.GOLD_INGOT]: { name: 'Gold Ingot', stack: 64, art: 'ingot', tint: 0xf6d33c },
+    [ITEM.DIAMOND]: { name: 'Diamond', stack: 64, art: 'gem' },
+    [ITEM.BUCKET]: { name: 'Bucket', stack: 1, art: 'bucket' },
+    [ITEM.BUCKET_WATER]: { name: 'Water Bucket', stack: 1, art: 'bucketWater' },
+  };
+  const kinds = [['PICK', 'Pickaxe', 'pick'], ['AXE', 'Axe', 'axe'], ['SHOVEL', 'Shovel', 'shovel']];
+  const mats = ['WOOD', 'STONE', 'IRON', 'DIAMOND'];
+  for (const [prefix, label, art] of kinds) {
+    TOOL_TIERS.forEach((t, i) => {
+      reg[ITEM[prefix + '_' + mats[i]]] = {
+        name: t.name + ' ' + label, stack: 1, art,
+        tool: { kind: art, tier: t.tier, speed: t.speed, dur: t.dur },
+        tierColor: t.head,
+      };
+    });
+  }
+  return reg;
+}
+const ITEMS = buildItemRegistry();
+
+function itemName(id) { return isItemId(id) ? (ITEMS[id] ? ITEMS[id].name : '?') : BLOCK_NAME[id]; }
+function stackMaxFor(id) { return isItemId(id) ? (ITEMS[id] ? ITEMS[id].stack : 64) : STACK_MAX; }
+function toolOf(id) { return isItemId(id) ? (ITEMS[id] ? ITEMS[id].tool || null : null) : null; }
+
+// Which tool family speeds up which block, and the minimum pickaxe tier a
+// stone-family block needs to DROP anything (Minecraft's classic rule).
+const TOOL_FAMILY = {
+  [B.STONE]: 'pick', [B.COBBLE]: 'pick', [B.COAL_ORE]: 'pick', [B.IRON_ORE]: 'pick',
+  [B.GOLD_ORE]: 'pick', [B.DIAMOND_ORE]: 'pick', [B.STONE_BRICKS]: 'pick',
+  [B.MOSSY_COBBLE]: 'pick', [B.SANDSTONE]: 'pick', [B.OBSIDIAN]: 'pick',
+  [B.BRICK]: 'pick', [B.FURNACE]: 'pick',
+  [B.LOG]: 'axe', [B.BIRCH_LOG]: 'axe', [B.SPRUCE_LOG]: 'axe',
+  [B.PLANKS]: 'axe', [B.BIRCH_PLANKS]: 'axe', [B.SPRUCE_PLANKS]: 'axe',
+  [B.BOOKSHELF]: 'axe', [B.CRAFTING_TABLE]: 'axe',
+  [B.GRASS]: 'shovel', [B.DIRT]: 'shovel', [B.SAND]: 'shovel',
+  [B.GRAVEL]: 'shovel', [B.SNOW]: 'shovel', [B.CLAY]: 'shovel',
+};
+const PICK_TIER_REQ = {
+  [B.STONE]: 1, [B.COBBLE]: 1, [B.COAL_ORE]: 1, [B.STONE_BRICKS]: 1, [B.MOSSY_COBBLE]: 1,
+  [B.SANDSTONE]: 1, [B.BRICK]: 1, [B.FURNACE]: 1,
+  [B.IRON_ORE]: 2,
+  [B.GOLD_ORE]: 3, [B.DIAMOND_ORE]: 3,
+  [B.OBSIDIAN]: 4,
+};
+
+// ---- smelting: what a furnace turns a block/item into ----
+const SMELT_MAP = {
+  [B.COBBLE]: B.STONE, [B.SAND]: B.GLASS, [B.CLAY]: B.BRICK,
+  [B.IRON_ORE]: ITEM.IRON_INGOT, [B.GOLD_ORE]: ITEM.GOLD_INGOT,
+};
+// ---- fuel: how many items one unit smelts (1 smelt = SMELT_TIME seconds) ----
+const SMELT_TIME = 8;
+const FUEL_MAP = {
+  [ITEM.COAL]: 8,
+  [B.LOG]: 1.5, [B.BIRCH_LOG]: 1.5, [B.SPRUCE_LOG]: 1.5,
+  [B.PLANKS]: 1.5, [B.BIRCH_PLANKS]: 1.5, [B.SPRUCE_PLANKS]: 1.5,
+  [B.CRAFTING_TABLE]: 1.5, [B.BOOKSHELF]: 3,
+  [ITEM.STICK]: 0.5, [B.DEAD_BUSH]: 0.5,
+};
 
 const ATLAS_TILES = 8, TILE_PX = 16, ATLAS_PX = ATLAS_TILES * TILE_PX;
 const PLAYER_HALF_W = 0.3, PLAYER_HEIGHT = 1.8, PLAYER_EYE = 1.62, REACH = 6;
@@ -515,11 +685,13 @@ var AIR=0, GRASS=1, DIRT=2, STONE=3, COBBLE=4, SAND=5, LOG=6, LEAVES=7,
     SPRUCE_LOG=40, SPRUCE_LEAVES=41, SPRUCE_PLANKS=42,
     WOOL_WHITE=43, WOOL_RED=44, WOOL_ORANGE=45, WOOL_YELLOW=46,
     WOOL_GREEN=47, WOOL_BLUE=48, WOOL_BLACK=49,
-    CACTUS=50, DEAD_BUSH=51, PUMPKIN=52, TNT=53, BOOKSHELF=54;
+    CACTUS=50, DEAD_BUSH=51, PUMPKIN=52, TNT=53, BOOKSHELF=54,
+    CRAFT_TABLE=56, FURNACE=57;
 
 // Flowing water: ids 17..23 carry level 7..1. Id 16 = source (level 8).
-function isWater(b) { return b >= WATER && b <= 23; }
-function wLevel(b) { return b === WATER ? 8 : (isWater(b) ? 8 - (b - WATER) : 0); }
+// Id 55 = FALLING water: the going-down fill state — always full height.
+function isWater(b) { return b === WATER || (b >= 17 && b <= 23) || b === 55; }
+function wLevel(b) { return (b === WATER || b === 55) ? 8 : (isWater(b) ? 8 - (b - WATER) : 0); }
 function isPlant(b) { return b === TALLGRASS || b === FLOWER_R || b === FLOWER_Y || b === DEAD_BUSH; }
 
 var OP = new Uint8Array(256);
@@ -531,7 +703,8 @@ OP[CLAY]=OP[GLOWSTONE]=OP[BIRCH_LOG]=OP[BIRCH_LEAVES]=OP[BIRCH_PLANKS]=
 OP[SPRUCE_LOG]=OP[SPRUCE_LEAVES]=OP[SPRUCE_PLANKS]=
 OP[WOOL_WHITE]=OP[WOOL_RED]=OP[WOOL_ORANGE]=OP[WOOL_YELLOW]=
 OP[WOOL_GREEN]=OP[WOOL_BLUE]=OP[WOOL_BLACK]=
-OP[CACTUS]=OP[PUMPKIN]=OP[TNT]=OP[BOOKSHELF]=1;
+OP[CACTUS]=OP[PUMPKIN]=OP[TNT]=OP[BOOKSHELF]=
+OP[CRAFT_TABLE]=OP[FURNACE]=1;
 
 // ---- deterministic noise ---------------------------------------------------
 function hash2i(x, z, seed) {
@@ -581,7 +754,11 @@ function terrainHeight(x, z, seed) {
 function treeAt(x, z, seed) {
   if (hash2i(x, z, seed + 77) < 0.015) {
     var h = terrainHeight(x, z, seed);
-    if (h > SEA + 1 && h < 46) {
+    // Only grow where the surface is GUARANTEED grass: above the beach band
+    // (h >= 31) and below bare stone (h <= 39).  Trees used to spawn on sand
+    // and stone slopes, where the trunk check failed but the canopy still
+    // generated — the classic "floating leaves" bug.
+    if (h > 30 && h < 40) {
       // species roll: spruce claims the high ground, birch mixes in low
       var sr = hash2i(x, z, seed + 79);
       var species = 0;                              // 0 oak · 1 birch · 2 spruce
@@ -763,6 +940,8 @@ TILES[BIRCH_PLANKS]= [37,37,37,37,37,37];
 TILES[SPRUCE_LOG]   = [38,38,7,7,38,38];
 TILES[SPRUCE_LEAVES]= [39,39,39,39,39,39];
 TILES[SPRUCE_PLANKS]= [40,40,40,40,40,40];
+TILES[CRAFT_TABLE]  = [58,58,56,9,57,57];
+TILES[FURNACE]      = [60,60,61,61,59,59];
 TILES[WOOL_WHITE] = [41,41,41,41,41,41];
 TILES[WOOL_RED]   = [42,42,42,42,42,42];
 TILES[WOOL_ORANGE]= [43,43,43,43,43,43];
@@ -895,10 +1074,12 @@ function meshChunk(padded) {
     buf.f.push(fl[0], fl[1], fl[2], fl[0], fl[1], fl[2], fl[0], fl[1], fl[2], fl[0], fl[1], fl[2]);
   }
 
-  // Surface height of a water cell. Sources (and cells under water, i.e.
-  // waterfall columns) render full height; flowing cells slope down by level.
+  // Surface height of a water cell. Sources render full; FALLING cells (the
+  // going-down fill state) render full too — a waterfall column is a solid
+  // unbroken sheet of water; only RESTING flowing cells slope down by level.
   function waterHeight(x, y, z, b) {
-    if (isWater(gp(x, y + 1, z))) return 0.875; // falling column stays full
+    if (b === 55) return 0.875;                 // falling: always full
+    if (isWater(gp(x, y + 1, z))) return 0.875; // under a column stays full
     var lv = wLevel(b);
     return lv >= 8 ? 0.875 : Math.max(0.11, 0.875 * lv / 8);
   }
@@ -910,6 +1091,7 @@ function meshChunk(padded) {
   // The direction is the level gradient: water always runs from high level
   // to low, and out toward any open air it is spilling into.
   function waterFlow(x, y, z, b, above, below) {
+    if (b === 55) return [0, 0, 2.0];            // falling column: churn
     if (isWater(above)) {
       // water overhead: a real POUR only when the cell is laterally exposed
       // (a column hanging in air).  Cells submerged inside a lake or the
@@ -1609,6 +1791,89 @@ function buildAtlas(seed = 1337) {
     if (px % 2 === 1) c = mix(c, rgb(0x000000), 0.25);
     if (y === 1 && hashTile(spine, shelfRow, 97) < 0.2) c = mix(c, rgb(0xd8c8a0), 0.5);
     return mix(c, rgb(0xffffff), rng() * 0.05);
+  });
+
+  // ---- crafting table: planks base, dark tool-worked top grid, side rail ----
+  const plankBase = (px, py) => {
+    const row = Math.floor(py / 4);
+    if (py % 4 === 3) return mix(rgb(0x7a5a32), rgb(0x8a6a3e), rng() * 0.4);
+    const shift = hashTile(row, 0, 21);
+    if (Math.abs(px - shift * 16) < 0.7) return rgb(0x6e5029);
+    return speckle(rgb(0xb08a55), rgb(0x9a7644), rgb(0xc19a63), 0.6);
+  };
+  paint(T.CRAFT_TOP, (px, py) => {
+    // 3x3 crafting grid etched into the wood with a darker rim
+    const rim = px < 2 || py < 2 || px > 13 || py > 13;
+    if (rim) return mix(rgb(0x8a6a3e), rgb(0x6e5029), rng() * 0.5);
+    const cell = Math.floor((px - 2) / 4) + Math.floor((py - 2) / 4) * 3;
+    const inX = (px - 2) % 4, inY = (py - 2) % 4;
+    if (inX === 3 || inY === 3) return mix(rgb(0x6e5029), rgb(0x5a3f20), rng() * 0.4);
+    if (inX === 0 || inY === 0) return mix(rgb(0x9a7644), rgb(0x7a5a32), rng() * 0.4);
+    // alternate cell tints like the real table
+    return mix(rgb(0xb08a55), rgb(0xc19a63), (cell % 2) * 0.5 + rng() * 0.2);
+  });
+  paint(T.CRAFT_SIDE, (px, py) => {
+    if (py < 4) {
+      // top band: saw-tooth edge over the grid
+      if (py === 0) return mix(rgb(0x6e5029), rgb(0x5a3f20), rng() * 0.3);
+      if (py === 3) return rgb(0x6e5029);
+      return mix(rgb(0x8a6a3e), rgb(0x9a7644), rng() * 0.4);
+    }
+    return plankBase(px, py);
+  });
+  paint(T.CRAFT_FRONT, (px, py) => {
+    if (py < 3) return mix(rgb(0x6e5029), rgb(0x5a3f20), rng() * 0.3);
+    // the classic front: a saw + hammer silhouette hung on planks
+    if (py >= 4 && py <= 11) {
+      const sawBlade = px >= 2 && px <= 6;
+      const sawHandle = px >= 7 && px <= 10 && py >= 4 && py <= 8;
+      const hammer = px >= 9 && px <= 13;
+      if (sawBlade) {
+        if (py === 4 || py === 11) return rgb(0x5a5a5a);
+        return mix(rgb(0x9c9c9c), rgb(0x7a7a7a), (px % 2) * 0.6);
+      }
+      if (sawHandle && py === 6) return mix(rgb(0x6e5029), rgb(0x5a3f20), 0.4);
+      if (hammer) {
+        const headY = py >= 4 && py <= 6, handleY = py >= 6 && py <= 11;
+        if (headY && px <= 13) return mix(rgb(0x8a8a8a), rgb(0x6a6a6a), rng() * 0.4);
+        if (handleY && (px === 11 || px === 12)) return mix(rgb(0x8a6a3e), rgb(0x6e5029), rng() * 0.4);
+      }
+    }
+    return plankBase(px, py);
+  });
+
+  // ---- furnace: dark cobble body with a glowing mouth on the front ----
+  const furnBody = (px, py) => {
+    const cx = Math.floor(px / 5), cy = Math.floor(py / 5);
+    const jx = hashTile(cx, cy, 5) * 2, jy = hashTile(cx, cy, 6) * 2;
+    const ix = (px % 5) - 1.5 + jx, iy = (py % 5) - 1.5 + jy;
+    const d = Math.sqrt(ix * ix + iy * iy);
+    const shade = 0.55 + hashTile(cx, cy, 7) * 0.3;
+    if (d > 2.1) return mix(rgb(0x2e2e2e), rgb(0x3a3a3a), rng() * 0.5);
+    return speckle(mix(rgb(0x6a6a6a), rgb(0x808080), shade), rgb(0x555555), rgb(0x8d8d8d), 0.7);
+  };
+  paint(T.FURN_SIDE, (px, py) => furnBody(px, py));
+  paint(T.FURN_TOP, (px, py) => {
+    // darker stone cap with a ring: heat-smoked centre
+    const dx = px - 7.5, dy = py - 7.5;
+    const d = Math.sqrt(dx * dx + dy * dy);
+    if (d > 7.2) return mix(rgb(0x2e2e2e), rgb(0x3a3a3a), rng() * 0.5);
+    if (d > 5.5) return mix(rgb(0x555555), rgb(0x666666), rng() * 0.4);
+    return mix(rgb(0x474747), rgb(0x515151), rng() * 0.5);
+  });
+  paint(T.FURN_FRONT, (px, py) => {
+    // the mouth: dark opening with ember glow at the base
+    if (py >= 9 && py <= 14 && px >= 3 && px <= 12) {
+      if (py >= 12) {
+        // ember bed
+        const e = hashTile(px, py, 88);
+        if (e < 0.35) return mix(rgb(0xd97a2a), rgb(0xf6b24a), rng() * 0.6);
+        if (e < 0.55) return mix(rgb(0x8a3f1a), rgb(0xb35a20), rng() * 0.5);
+        return rgb(0x1a0e08);
+      }
+      return mix(rgb(0x120a06), rgb(0x1e120a), rng() * 0.5);
+    }
+    return furnBody(px, py);
   });
 
   function hashTile(x, y, s) {
@@ -2646,12 +2911,13 @@ class LightingRig {
 // ============================================================================
 // FluidSim — Minecraft-style flowing water, main thread, fixed 0.2s ticks.
 //   * Id 16 is a SOURCE (level 8): never decays, always spreads.
-//   * Ids 17..23 are FLOWING cells at level 7..1 that continuously converge
-//     to "best inflow minus one" (or level 7 directly under a column).
-//   * Water prefers falling: a cell with air below pours down before it
-//     spreads sideways, which produces proper waterfalls.
-//   * Two sources flanking a flowing cell crystallise into a new source —
-//     the classic infinite-pool rule.
+//   * Ids 17..23 are RESTING flowing cells at level 7..1: the "going across"
+//     fill states — they slope down by level and converge to inflow-1.
+//   * Id 55 is FALLING water: the "going down" fill state — full height, fed
+//     by water above, pours straight down without spreading sideways, and
+//     RESETS the spread distance when it lands (level 7, like MC).
+//   * Two sources flanking a resting flowing cell crystallise a new source —
+//     the classic infinite-pool rule (never applies to falling water).
 // Cells only enter the queue when a neighbour changes, so a settled ocean
 // costs zero work. Each tick processes at most MAX_CELLS updates.
 // ============================================================================
@@ -2719,7 +2985,45 @@ class FluidSim {
         this._spread(x, y, z, 8);
         return;
       }
-      // flowing: converge towards inflow level, possibly drying up
+
+      // ---- FALLING water (id 55): the going-down fill state ----
+      if (id === WATER_FALLING) {
+        const above = w.getVoxel(x, y + 1, z);
+        if (!isWaterId(above)) {
+          // no inflow from above any more: dry out or fall back to resting flow
+          const wanted = this._inflowLevel(x, y, z);
+          w.setVoxelEdited(x, y, z, wanted >= 1 ? waterIdForLevel(wanted) : B.AIR);
+          this.scheduleNeighbours(x, y, z);
+          return;
+        }
+        if (y > 0) {
+          const below = w.getVoxel(x, y - 1, z);
+          if (below === B.AIR || PLANT_IDS.has(below)) {
+            // pour straight down — never sideways: waterfalls stay narrow
+            w.setVoxelEdited(x, y - 1, z, WATER_FALLING);
+            this.scheduleNeighbours(x, y - 1, z);
+            if (this.onWaterfall) this.onWaterfall(x, y - 1, z);
+            return;
+          }
+          if (isWaterId(below)) return;   // column continues below: no spread
+        }
+        // landed (fed from above, resting on solid): STAYS falling — renders
+        // full height like MC's falling bit — and spreads sideways at level 7
+        // (falling resets the spread distance from the landing point)
+        this._spread(x, y, z, 8);
+        return;
+      }
+
+      // ---- RESTING flowing (17..23): the going-across fill states ----
+      const above = w.getVoxel(x, y + 1, z);
+      if (isWaterId(above)) {
+        // water pours onto this cell: switch to the DOWN fill state — it
+        // renders full height instead of showing a level-7 notch under
+        // every waterfall, and pours onward when its support is gone.
+        w.setVoxelEdited(x, y, z, WATER_FALLING);
+        this.scheduleNeighbours(x, y, z);
+        return;
+      }
       const wanted = this._inflowLevel(x, y, z);
       if (wanted !== waterLevelOf(id)) {
         const newId = wanted > 0 ? waterIdForLevel(wanted) : B.AIR;
@@ -2727,11 +3031,9 @@ class FluidSim {
         this.scheduleNeighbours(x, y, z);
         if (wanted <= 0) return;       // dried: nothing further to spread
       }
-      // infinite pool: a flowing cell flanked by two sources AND resting on
+      // infinite pool: a resting flowing cell flanked by two sources AND on
       // solid ground (or a source) becomes a source itself — the Minecraft
-      // rule.  The "supported below" check is what keeps sources from
-      // crystallising in mid-air over drops, which used to seed permanent
-      // floating waterfalls that never stopped pouring.
+      // rule. Falling water never crystallises (it isn't resting on anything).
       if (this._sourceNeighbours(x, y, z) >= 2 && this._sourceSupported(x, y, z)) {
         w.setVoxelEdited(x, y, z, B.WATER);
         this.scheduleNeighbours(x, y, z);
@@ -2743,6 +3045,12 @@ class FluidSim {
 
     // not water: can water flow in? (air or plants only)
     if (id !== B.AIR && !PLANT_IDS.has(id)) return;
+    if (isWaterId(w.getVoxel(x, y + 1, z))) {
+      // pour from above → the falling fill state, full height
+      w.setVoxelEdited(x, y, z, WATER_FALLING);
+      this.scheduleNeighbours(x, y, z);
+      return;
+    }
     const wanted2 = this._inflowLevel(x, y, z);
     if (wanted2 >= 1) {
       w.setVoxelEdited(x, y, z, waterIdForLevel(wanted2));
@@ -2759,28 +3067,18 @@ class FluidSim {
       (below !== B.AIR && !isWaterId(below) && !PLANT_IDS.has(below));
   }
 
-  /** Level this cell should settle at from its inflow, or 0 for "dry". */
+  /** Level this cell should settle at from its SIDE inflow, or 0 for "dry".
+   *  (Cells with water above are handled as falling water before this runs.)
+   *  Only water RESTING on something feeds sideways — falling columns pour
+   *  straight down, which keeps waterfalls narrow like Minecraft. */
   _inflowLevel(x, y, z) {
     const w = this.world;
-    if (isWaterId(w.getVoxel(x, y + 1, z))) return 7;   // under a column
-    const belowMe = w.getVoxel(x, y - 1, z);
-    // Escalating to a full falling column happens over a real void (air/
-    // plants) or over a FALLING column below (the lip of a waterfall stays
-    // full).  But over a SOURCE block (a lake/sea surface) the current must
-    // DECAY one level per block like Minecraft — otherwise a splash landing
-    // on a lake regenerates full-height water over every cell and crawls
-    // across the entire sea forever.
-    const overDrop = y > 0 && (belowMe === B.AIR || PLANT_IDS.has(belowMe) ||
-      (isWaterId(belowMe) && belowMe !== B.WATER));
     let max = 0;
     const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
     for (const [dx, dz] of dirs) {
       const nx = x + dx, nz = z + dz;
       const n = w.getVoxel(nx, y, nz);
       if (!isWaterId(n)) continue;
-      // Only water RESTING on something feeds sideways: a solid floor or a
-      // source body. Falling columns pour straight down — which is exactly
-      // what keeps waterfalls narrow, like Minecraft.
       // (y=0 always sits on bedrock, so neighbours there are resting —
       // without this, water on the world floor oscillates dry/wet forever.)
       const belowN = y > 0 ? w.getVoxel(nx, y - 1, nz) : B.STONE;
@@ -2789,9 +3087,6 @@ class FluidSim {
       if (!resting) continue;
       max = Math.max(max, waterLevelOf(n));
     }
-    // Over a real drop, any inflow turns into a full falling column — a
-    // stream reaching a cliff edge pours off it, like MC.
-    if (overDrop) return max >= 1 ? 7 : 0;
     return max - 1;
   }
 
@@ -2810,8 +3105,8 @@ class FluidSim {
     if (y - 1 >= 0) {
       const below = w.getVoxel(x, y - 1, z);
       if (below === B.AIR || PLANT_IDS.has(below)) {
-        // pour down first — a waterfall grows one cell per tick
-        w.setVoxelEdited(x, y - 1, z, waterIdForLevel(7));
+        // pour down first — falling water, the down fill state, one per tick
+        w.setVoxelEdited(x, y - 1, z, WATER_FALLING);
         this.scheduleNeighbours(x, y - 1, z);
         if (this.onWaterfall) this.onWaterfall(x, y - 1, z);
         return;
@@ -2830,6 +3125,88 @@ class FluidSim {
         this.scheduleNeighbours(nx, y, nz);
       }
     }
+  }
+}
+
+// ============================================================================
+// LeafDecay — Minecraft-style leaf aging. A leaf block survives only while a
+// log sits within a 4-block chebyshev radius; chop the trunk out and the
+// canopy ages, pops and cascades away instead of hovering forever. Runs on
+// the same fixed-tick, rate-limited pattern as the fluid sim: nothing costs
+// a frame until a log or leaf actually changes nearby.
+// ============================================================================
+class LeafDecay {
+  constructor(world) {
+    this.world = world;
+    this.queue = [];
+    this.queued = new Set();
+    this.tickAcc = 0;
+    this.TICK = 0.25;
+    this.MAX_CELLS = 14;        // checks per tick — worst case stays tiny
+    this.onDecay = null;        // (x,y,z,leafId) game-side particles/sound
+  }
+
+  clear() { this.queue.length = 0; this.queued.clear(); }
+  get pending() { return this.queue.length / 3; }
+
+  /** Queue the leaves around a removed log/leaf so they re-check support. */
+  scheduleAround(x, y, z) {
+    for (let dy = -4; dy <= 4; dy++) {
+      for (let dx = -4; dx <= 4; dx++) {
+        for (let dz = -4; dz <= 4; dz++) {
+          this._schedule(x + dx, y + dy, z + dz);
+        }
+      }
+    }
+  }
+
+  _schedule(x, y, z) {
+    if (y < 0 || y >= WORLD_H) return;
+    const k = x + ',' + y + ',' + z;
+    if (this.queued.has(k)) return;
+    const b = this.world.getVoxel(x, y, z);
+    if (!LEAF_IDS.has(b)) return;          // only leaves ever need checking
+    this.queued.add(k);
+    this.queue.push(x, y, z);
+  }
+
+  update(dt) {
+    this.tickAcc += dt;
+    if (this.tickAcc < this.TICK) return;
+    this.tickAcc -= this.TICK;
+    let n = Math.min(this.MAX_CELLS, this.queue.length / 3);
+    while (n-- > 0 && this.queue.length >= 3) {
+      const x = this.queue.shift(), y = this.queue.shift(), z = this.queue.shift();
+      this.queued.delete(x + ',' + y + ',' + z);
+      this._processCell(x, y, z);
+    }
+  }
+
+  _processCell(x, y, z) {
+    const w = this.world;
+    const b = w.getVoxel(x, y, z);
+    if (!LEAF_IDS.has(b)) return;          // changed since it was queued
+    if (this._logWithin4(x, y, z)) return; // supported: stays
+    w.setVoxelEdited(x, y, z, B.AIR);
+    if (this.onDecay) this.onDecay(x, y, z, b);
+    // cascade: neighbours may have just lost their last support
+    this.scheduleAround(x, y, z);
+    // water wakes where the leaf vanished
+    w.fluid.scheduleNeighbours(x, y, z);
+  }
+
+  _logWithin4(x, y, z) {
+    const w = this.world;
+    for (let dy = -4; dy <= 4; dy++) {
+      const yy = y + dy;
+      if (yy < 0 || yy >= WORLD_H) continue;
+      for (let dx = -4; dx <= 4; dx++) {
+        for (let dz = -4; dz <= 4; dz++) {
+          if (LOG_IDS.has(w.getVoxel(x + dx, yy, z + dz))) return true;
+        }
+      }
+    }
+    return false;
   }
 }
 
@@ -2856,6 +3233,7 @@ class World {
     this.onChunkMeshed = null;
     this.pendingResults = [];
     this.fluid = new FluidSim(this);
+    this.leaves = new LeafDecay(this);
     // ---- save-system state: sparse diff of player edits ----
     this.editMap = new Map();               // "x,y,z" -> block id
     this.editsByChunk = new Map();          // "cx,cz" -> Map(localIdx -> id)
@@ -2879,6 +3257,7 @@ class World {
     this.meshQueue = [];
     this.pendingResults = [];
     this.fluid.clear();
+    this.leaves.clear();
   }
 
   setRenderDistance(rd) {
@@ -4075,11 +4454,19 @@ const inv = {
   sel: 0,
 };
 
-function slotToJSON(s) { return s ? [s.id, s.count] : null; }
+function slotToJSON(s) { return s ? (s.dur !== undefined ? [s.id, s.count, s.dur] : [s.id, s.count]) : null; }
 function slotFromJSON(v) {
-  if (!Array.isArray(v) || v.length !== 2) return null;
+  if (!Array.isArray(v) || v.length < 2) return null;
   const id = v[0] | 0, count = v[1] | 0;
-  if (id <= 0 || !TILES[id] || count <= 0) return null;
+  if (id <= 0 || count <= 0) return null;
+  if (isItemId(id)) {
+    if (!ITEMS[id]) return null;
+    const s = { id, count: Math.min(stackMaxFor(id), count) };
+    const t = toolOf(id);
+    if (t) s.dur = Math.max(1, Math.min(t.dur, Math.round(+v[2] || t.dur)));
+    return s;
+  }
+  if (!TILES[id]) return null;
   return { id, count: Math.min(STACK_MAX, count) };
 }
 
@@ -4110,18 +4497,44 @@ function resetInventory(starter) {
   inv.main = new Array(27).fill(null);
   inv.sel = 0;
   if (starter) {
-    // survival starter kit: enough to build, play with water and blow things up
-    inv.hotbar[0] = { id: B.PLANKS, count: 24 };
-    inv.hotbar[1] = { id: B.GLASS, count: 12 };
-    inv.hotbar[2] = { id: B.WATER, count: 4 };
-    inv.hotbar[3] = { id: B.SPONGE, count: 2 };
-    inv.hotbar[4] = { id: B.TNT, count: 3 };
+    // survival starts the Minecraft way: punch a tree, craft, upgrade.
+    // (a torch-free first night is survivable — hearts regen out of danger)
   }
 }
 
-/** Add `count` of block `id`; returns the number actually stored. */
-function addToInventory(id, count = 1) {
-  if (!TILES[id] || count <= 0) return 0;
+/** Add `count` of block/item `id`; returns the number actually stored. */
+function addToInventory(id, count = 1, dur = undefined) {
+  if (count <= 0) return 0;
+  if (isItemId(id)) {
+    if (!ITEMS[id]) return 0;
+    const max = stackMaxFor(id);
+    let remaining = count;
+    if (max > 1) {
+      for (const arr of [inv.hotbar, inv.main]) {
+        for (let i = 0; i < arr.length && remaining > 0; i++) {
+          const s = arr[i];
+          if (s && s.id === id && s.count < max) {
+            const add = Math.min(max - s.count, remaining);
+            s.count += add;
+            remaining -= add;
+          }
+        }
+      }
+    }
+    for (const arr of [inv.hotbar, inv.main]) {
+      for (let i = 0; i < arr.length && remaining > 0; i++) {
+        if (!arr[i]) {
+          const t = toolOf(id);
+          arr[i] = t
+            ? { id, count: 1, dur: dur !== undefined ? dur : t.dur }
+            : { id, count: Math.min(max, remaining) };
+          remaining -= arr[i].count;
+        }
+      }
+    }
+    return count - remaining;
+  }
+  if (!TILES[id]) return 0;
   let remaining = count;
   // 1) stack into existing piles (hotbar first so it's reachable)
   for (const arr of [inv.hotbar, inv.main]) {
@@ -4148,9 +4561,10 @@ function addToInventory(id, count = 1) {
 }
 
 function inventoryHasRoomFor(id) {
+  const max = stackMaxFor(id);
   for (const arr of [inv.hotbar, inv.main]) {
     for (const s of arr) {
-      if (!s || (s.id === id && s.count < STACK_MAX)) return true;
+      if (!s || (s.id === id && s.count < max)) return true;
     }
   }
   return false;
@@ -4174,6 +4588,376 @@ function countOf(id) {
     for (const s of arr) if (s && s.id === id) n += s.count;
   }
   return n;
+}
+
+// ============================================================================
+// ITEM ART — 16×16 pixel sprites drawn once to canvases (data URLs for the
+// DOM, the canvas itself for the held-item texture). Tools share three
+// silhouettes; the head pixels take the tier colour.
+// ============================================================================
+const ITEM_ART = {
+  pick: [
+    '................',
+    '..........MMMm.',
+    '.........MMMMMm',
+    '........MMMMMMm',
+    '.......MMMMMMm.',
+    '..MM..MMMMMm...',
+    '.MMMM.MMMm.....',
+    '.MMMMMHm.......',
+    '..MM.Hh........',
+    '.....Hh........',
+    '....Hh.........',
+    '...Hh..........',
+    '..Hh...........',
+    '.Hh............',
+    '.h.............',
+    '................',
+  ],
+  axe: [
+    '................',
+    '.........MMMm..',
+    '........MMMMMm.',
+    '........MMMMMMm',
+    '.......HmMMMm..',
+    '......HhmMMm...',
+    '.....Hh.MMm....',
+    '....Hh..m......',
+    '...Hh..........',
+    '..Hh...........',
+    '.Hh............',
+    '.h.............',
+    '................',
+    '................',
+    '................',
+    '................',
+  ],
+  shovel: [
+    '................',
+    '..........MMMm.',
+    '.........MMMMMm',
+    '.........MMMMMm',
+    '.........MMMMm.',
+    '........hMMMm..',
+    '.......Hh......',
+    '......Hh.......',
+    '.....Hh........',
+    '....Hh.........',
+    '...Hh..........',
+    '..Hh...........',
+    '.Hh............',
+    '.h.............',
+    '................',
+    '................',
+  ],
+  stick: [
+    '................',
+    '................',
+    '..........Hh...',
+    '.........Hh....',
+    '........Hh.....',
+    '.......Hh......',
+    '......Hh.......',
+    '.....Hh........',
+    '....Hh.........',
+    '...Hh..........',
+    '..Hh...........',
+    '.Hh............',
+    '................',
+    '................',
+    '................',
+    '................',
+  ],
+  coal: [
+    '................',
+    '................',
+    '................',
+    '.....mmmm......',
+    '....mMMMmm.....',
+    '...mMMMMMMm....',
+    '..mMMmMMMMMm...',
+    '..mMMMMmMMMm...',
+    '..mMMMMMMMMm...',
+    '...mMMMMMMm....',
+    '....mMMMMm.....',
+    '.....mmmm......',
+    '................',
+    '................',
+    '................',
+    '................',
+  ],
+  ingot: [
+    '................',
+    '................',
+    '................',
+    '................',
+    '....mMMMMMMm....',
+    '...mMMMMMMMMm...',
+    '..mMMMMMMMMMMm..',
+    '..MMMMMMMMMMMM..',
+    '..MMMMMMMMMMMM..',
+    '...mmmmmmmmmm...',
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+  ],
+  gem: [
+    '................',
+    '................',
+    '......mmmm.....',
+    '.....mMMMMm....',
+    '....mMMMMMMm...',
+    '...mMMMMMMMMm..',
+    '...mMMMMMMMMm..',
+    '....mMMMMMMm...',
+    '.....mMMMMm....',
+    '......mMMm.....',
+    '.......mm......',
+    '................',
+    '................',
+    '................',
+    '................',
+    '................',
+  ],
+  bucket: [
+    '................',
+    '.......HH......',
+    '......H..H.....',
+    '.....H....H....',
+    '....mMMMMMMm...',
+    '...mMMMMMMMMm..',
+    '...MMMMMMMMM...',
+    '...MMMMMMMMM...',
+    '...MMMMMMMMM...',
+    '...MMMMMMMMM...',
+    '...mMMMMMMMm...',
+    '....mmmmmmm....',
+    '................',
+    '................',
+    '................',
+    '................',
+  ],
+};
+
+const ART_PAL_BASE = { H: '#8a6a3e', h: '#6e5029', M: '#8a8a8a', m: '#5a5a5a' };
+
+function artPaletteFor(itemDef) {
+  const pal = { ...ART_PAL_BASE };
+  if (itemDef.tool) {                       // tier-coloured heads
+    pal.M = itemDef.tierColor;
+    pal.m = shadeHex(itemDef.tierColor, 0.62);
+  }
+  if (itemDef.tint !== undefined) {
+    pal.M = '#' + itemDef.tint.toString(16).padStart(6, '0');
+    pal.m = shadeHex(pal.M, 0.62);
+  }
+  if (itemDef.art === 'coal') { pal.M = '#2e2e2e'; pal.m = '#141414'; }
+  if (itemDef.art === 'gem') { pal.M = '#4fc3c0'; pal.m = '#2f8f8c'; }
+  return pal;
+}
+
+function shadeHex(hex, f) {
+  const s = typeof hex === 'string' ? hex.slice(1) : hex.toString(16).padStart(6, '0');
+  const n = parseInt(s, 16);
+  const r = Math.round(((n >> 16) & 255) * f), g = Math.round(((n >> 8) & 255) * f), b = Math.round((n & 255) * f);
+  return '#' + ((r << 16) | (g << 8) | b).toString(16).padStart(6, '0');
+}
+
+/** Paint one item's 16×16 sprite; returns {canvas16, url} (URL upscaled ×4). */
+function paintItemArt(id) {
+  const def = ITEMS[id];
+  // the water bucket shares the bucket silhouette + a painted water fill
+  const rows = ITEM_ART[def.art === 'bucketWater' ? 'bucket' : def.art];
+  if (!rows) return null;
+  const pal = artPaletteFor(def);
+  const c16 = document.createElement('canvas');
+  c16.width = 16; c16.height = 16;
+  const ctx = c16.getContext('2d');
+  for (let y = 0; y < 16; y++) {
+    for (let x = 0; x < 16; x++) {
+      const ch = rows[y][x];
+      if (ch === '.') continue;
+      const col = pal[ch];
+      if (!col) continue;
+      ctx.fillStyle = col;
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
+  if (def.art === 'bucketWater') {
+    // water sloshing inside the bucket
+    ctx.fillStyle = '#3f76c9';
+    ctx.fillRect(4, 6, 8, 5);
+    ctx.fillStyle = '#7db3f2';
+    ctx.fillRect(4, 6, 8, 1);
+  }
+  const c64 = document.createElement('canvas');
+  c64.width = 64; c64.height = 64;
+  const c2 = c64.getContext('2d');
+  c2.imageSmoothingEnabled = false;
+  c2.drawImage(c16, 0, 0, 64, 64);
+  return { canvas16: c16, url: c64.toDataURL('image/png') };
+}
+
+const ITEM_ART_CACHE = new Map();   // id -> {canvas16, url}
+function itemArtFor(id) {
+  if (ITEM_ART_CACHE.has(id)) return ITEM_ART_CACHE.get(id);
+  const art = paintItemArt(id);
+  if (art) ITEM_ART_CACHE.set(id, art);
+  return art;
+}
+
+/** Icon URL for any slot id: baked block render, or item pixel sprite. */
+function iconForAny(atlasCanvas, id) {
+  if (isItemId(id)) {
+    const art = itemArtFor(id);
+    return art ? art.url : null;
+  }
+  return iconFor(atlasCanvas, id);
+}
+
+// ============================================================================
+// CRAFTING — recipes, grid matching, and the shared craft state. The grid is
+// always a 3×3 array; the pocket 2×2 UI edits its top-left corner, so the
+// same matcher serves both (trimming makes them equivalent).
+// ============================================================================
+const craft = {
+  grid: new Array(9).fill(null),   // {id,count,dur?}|null
+  big: false,                      // true = opened at a crafting table (3×3)
+};
+
+function buildRecipes() {
+  const R = [];
+  const push = (shape, outId, outN, opts = {}) => R.push({
+    cells: shape.map(row => row.map(tok => {
+      if (tok === null) return null;
+      if (tok === 'L') return LOG_IDS;
+      if (tok === 'P') return PLANK_IDS;
+      if (tok === 'C') return 'C';
+      if (tok === 'S') return 'S';
+      if (tok === 'I') return 'I';
+      if (tok === 'D') return 'D';
+      if (tok === 'SA') return 'SA';
+      if (tok === 'ST') return 'ST';
+      if (tok === 'CO') return 'CO';
+      return new Set([tok]);
+    })),
+    outId, outN, mirror: !!opts.mirror,
+    dynamic: opts.dynamic || null,   // (gridIds) => outId for log->planks
+  });
+  // wood: any log -> 4 matching planks (dynamic output)
+  push([['L']], null, 4, { dynamic: (ids) => planksForLog(ids.find(v => v) || B.LOG) });
+  push([['P'], ['P']], ITEM.STICK, 4);
+  push([['P', 'P'], ['P', 'P']], B.CRAFTING_TABLE, 1);
+  push([['C', 'C', 'C'], ['C', null, 'C'], ['C', 'C', 'C']], B.FURNACE, 1);
+  push([['SA', 'SA'], ['SA', 'SA']], B.SANDSTONE, 1);
+  push([['ST', 'ST'], ['ST', 'ST']], B.STONE_BRICKS, 4);
+  push([['CO', 'SA', 'CO'], ['SA', 'CO', 'SA'], ['CO', 'SA', 'CO']], B.TNT, 1);
+  push([['I', null, 'I'], [null, 'I', null]], ITEM.BUCKET, 1);
+  push([['P', 'P', 'P'], ['P', null, 'P'], ['P', 'P', 'P']], B.BOOKSHELF, 1);
+  // tools per tier: material token by tier
+  const matTok = { 0: 'P', 1: 'C', 2: 'I', 3: 'D' };
+  const prefixes = ['PICK', 'AXE', 'SHOVEL'];
+  for (let k = 0; k < 3; k++) {
+    for (let t = 0; t < 4; t++) {
+      const M = matTok[t];
+      const outId = ITEM[prefixes[k] + '_' + ['WOOD', 'STONE', 'IRON', 'DIAMOND'][t]];
+      if (k === 0) push([[M, M, M], [null, 'S', null], [null, 'S', null]], outId, 1);
+      if (k === 1) { push([[M, M], [M, 'S'], [null, 'S']], outId, 1, { mirror: true }); }
+      if (k === 2) push([[M], ['S'], ['S']], outId, 1);
+    }
+  }
+  // resolve token shortcuts into Sets now that ITEM exists
+  const tokMap = {
+    C: new Set([B.COBBLE]), S: new Set([ITEM.STICK]), I: new Set([ITEM.IRON_INGOT]),
+    D: new Set([ITEM.DIAMOND]), SA: new Set([B.SAND]), ST: new Set([B.STONE]),
+    CO: new Set([ITEM.COAL]),
+  };
+  for (const r of R) {
+    r.cells = r.cells.map(row => row.map(c => (typeof c === 'string' ? tokMap[c] : c)));
+    // pre-trim
+    const rows = r.cells.length, cols = r.cells[0].length;
+    r.w = cols; r.h = rows;
+    r.mirrorCells = r.mirror ? r.cells.map(row => row.slice().reverse()) : null;
+  }
+  return R;
+}
+const RECIPES = buildRecipes();
+
+/** Trim the player's 3×3 grid ids to its bounding box, like MC placement. */
+function trimGrid(ids) {
+  let minR = 3, maxR = -1, minC = 3, maxC = -1;
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 3; c++) {
+      if (ids[r * 3 + c]) {
+        minR = Math.min(minR, r); maxR = Math.max(maxR, r);
+        minC = Math.min(minC, c); maxC = Math.max(maxC, c);
+      }
+    }
+  }
+  if (maxR < 0) return null;
+  const rows = [];
+  for (let r = minR; r <= maxR; r++) {
+    const row = [];
+    for (let c = minC; c <= maxC; c++) row.push(ids[r * 3 + c] || 0);
+    rows.push(row);
+  }
+  return rows;
+}
+
+function gridMatches(rows, cells) {
+  if (rows.length !== cells.length || rows[0].length !== cells[0].length) return false;
+  for (let r = 0; r < rows.length; r++) {
+    for (let c = 0; c < rows[0].length; c++) {
+      const want = cells[r][c], got = rows[r][c];
+      if (want === null) { if (got !== 0) return false; }
+      else if (!want.has(got)) return false;
+    }
+  }
+  return true;
+}
+
+/** Match the craft grid; returns {id, n} | null. */
+function matchCrafting() {
+  const ids = craft.grid.map(s => (s ? s.id : 0));
+  const rows = trimGrid(ids);
+  if (!rows) return null;
+  for (const r of RECIPES) {
+    if (gridMatches(rows, r.cells)) {
+      const outId = r.dynamic ? r.dynamic(ids) : r.outId;
+      return { id: outId, n: r.outN };
+    }
+    if (r.mirrorCells && gridMatches(rows, r.mirrorCells)) {
+      const outId = r.dynamic ? r.dynamic(ids) : r.outId;
+      return { id: outId, n: r.outN };
+    }
+  }
+  return null;
+}
+
+/** Consume one of every ingredient in the grid (crafting took the result). */
+function consumeCraftGrid() {
+  for (let i = 0; i < 9; i++) {
+    const s = craft.grid[i];
+    if (s) {
+      s.count--;
+      if (s.count <= 0) craft.grid[i] = null;
+    }
+  }
+}
+
+/** Empty the craft grid back into the inventory (closing the screen). */
+function returnCraftGrid() {
+  for (let i = 0; i < 9; i++) {
+    const s = craft.grid[i];
+    if (s) {
+      const left = s.count - addToInventory(s.id, s.count, s.dur);
+      if (left > 0) UI.toast('No room — crafting items lost');
+      craft.grid[i] = null;
+    }
+  }
 }
 
 // ============================================================================
@@ -4269,6 +5053,12 @@ class Game {
       if (this.state !== 'playing') return;
       if (this.rng() < 0.45) this.particles.spawnWaterfallMist(x, y, z);
       if (this.rng() < 0.3) this.particles.spawnBubbles(x + 0.5, y + 0.3, z + 0.5, 2, 0.8);
+    };
+    // leaf decay feedback: a soft pop of leaf litter where a canopy dies
+    this.world.leaves.onDecay = (x, y, z, leafId) => {
+      if (this.state !== 'playing') return;
+      this.particles.spawnBlockBreak(x, y, z, BLOCK_COLOR[leafId] || 0x3f7a2a, 6);
+      if (this.rng() < 0.25) this.audio.digSound('leaves');
     };
 
     this.audio = new AudioSystem();
@@ -4370,6 +5160,11 @@ class Game {
     // ---- entity systems: primed TNT + falling blocks ----
     this.tnts = [];
     this.fallingBlocks = [];
+
+    // ---- furnaces: smelting state per placed furnace ----
+    this.furnaces = new Map();         // "x,y,z" -> {in,fuel,out,burn,burnMax,cook}
+    this.openFurnaceKey = null;
+    this.furnacesDirty = false;
 
     this.blocksPlaced = 0;
     this.blocksBroken = 0;
@@ -4598,6 +5393,9 @@ class Game {
     this.tnts.length = 0;
     for (const f of this.fallingBlocks) { this.scene.remove(f.mesh); f.mesh.geometry.dispose(); }
     this.fallingBlocks.length = 0;
+    this.furnaces.clear();
+    this.openFurnaceKey = null;
+    returnCraftGrid();
     resetInventory(this.mode !== 'creative');
     this.world.updateStreaming(0, 0);
     this._tryFindSpawn();
@@ -4697,11 +5495,15 @@ class Game {
   _onKeyDownImpl(e) {
     if (e.code === 'Escape') {
       if (this.uiOpen === 'inventory') { UI.closeInventory(true); }
+      else if (this.uiOpen === 'furnace') { UI.closeFurnace(true); }
       return;
     }
     if (this.state !== 'playing') return;
     if (this.uiOpen) {
-      if (e.code === 'KeyE' && this.uiOpen === 'inventory') UI.closeInventory(true);
+      if (e.code === 'KeyE') {
+        if (this.uiOpen === 'inventory') UI.closeInventory(true);
+        else if (this.uiOpen === 'furnace') UI.closeFurnace(true);
+      }
       return;
     }
     if (['Space', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'Tab'].includes(e.code)) e.preventDefault();
@@ -4773,6 +5575,7 @@ class Game {
     const locked = this._lookLocked();
     if (!locked && this.state === 'playing' && !this.suppressUnlockPause) {
       if (this.uiOpen === 'inventory') { UI.closeInventory(false); }
+      else if (this.uiOpen === 'furnace') { UI.closeFurnace(false); }
       else this.pause();
     }
     this.suppressUnlockPause = false;
@@ -4848,7 +5651,7 @@ class Game {
       return;
     }
 
-    const hard = HARDNESS[hit.block] ?? 1;
+    const hard = this._miningTime(hit.block);
     const m = this.mining;
     if (!m.active || m.x !== hit.x || m.y !== hit.y || m.z !== hit.z) {
       m.active = true;
@@ -4900,8 +5703,11 @@ class Game {
     this.audio.digSound(SOUND_FAMILY[id] || 'stone');
     this.blocksBroken++;
     this.handFlash = 1;   // the mining impact lights up the hand for a beat
-    // collect the drop
-    const drop = DROPS[id] !== undefined ? DROPS[id] : id;
+    this._damageTool();   // tools wear (and eventually snap) per block
+    // a broken furnace returns its smelting charge
+    if (id === B.FURNACE) this._dumpFurnaceContents(hit.x, hit.y, hit.z);
+    // collect the drop (gated: stone-family needs a pickaxe of the tier)
+    const drop = this._dropForBreak(id);
     if (drop) {
       const added = addToInventory(drop, 1);
       if (added === 0) {
@@ -4910,6 +5716,12 @@ class Game {
         this.invDirty = true;
         UI.refreshHotbar();
       }
+    } else if (PICK_TIER_REQ[id] !== undefined && this.mode !== 'creative') {
+      UI.toast('Needs a better pickaxe to collect');
+    }
+    // chopping wood (or leaves) wakes the canopy: unsupported leaves decay
+    if (LOG_IDS.has(id) || LEAF_IDS.has(id)) {
+      this.world.leaves.scheduleAround(hit.x, hit.y, hit.z);
     }
     this._wakeWaterNeighbours(hit.x, hit.y, hit.z);
     // unsupported things stacked on this block lose their footing: plants
@@ -4937,9 +5749,37 @@ class Game {
     const hit = this.currentHit;
     if (!hit) return;
     const slot = selectedSlot();
+
+    // ---- interactive blocks: right-click USES them instead of placing ----
+    const sneaking = this._keys.has('ShiftLeft') || this._keys.has('ShiftRight');
+    if (!sneaking) {
+      if (hit.block === B.CRAFTING_TABLE) {
+        UI.openInventory(true);
+        this.placeCooldown = 0.35;
+        return;
+      }
+      if (hit.block === B.FURNACE) {
+        this.openFurnaceKey = hit.x + ',' + hit.y + ',' + hit.z;
+        UI.openFurnace(hit.x, hit.y, hit.z);
+        this.placeCooldown = 0.35;
+        return;
+      }
+    }
+
+    // ---- bucket: scoop and pour water sources ----
+    if (slot && (slot.id === ITEM.BUCKET || slot.id === ITEM.BUCKET_WATER)) {
+      this._useBucket(hit);
+      return;
+    }
+
     if (!slot) {
-      UI.toast('Empty hand — select a block (1-9, wheel, or E)');
+      UI.toast('Empty hand — select a block or item (1-9, wheel, or E)');
       this.placeCooldown = 0.3;
+      return;
+    }
+    // non-block items (sticks, tools…) are not placeable
+    if (!isBlockId(slot.id)) {
+      this.placeCooldown = 0.25;
       return;
     }
     const block = slot.id;
@@ -5040,6 +5880,181 @@ class Game {
       UI.toast('Sponge absorbed ' + absorbed + (absorbed === 1 ? ' block' : ' blocks') + ' of water');
     }
     this.world.fluid.scheduleNeighbours(x, y, z);
+  }
+
+  /** Bucket interactions: scoop a still source, or pour one out. */
+  _useBucket(hit) {
+    const slot = selectedSlot();
+    if (!slot) return;
+    const creative = this.mode === 'creative';
+    const { ax, ay, az } = hit;
+    if (ay < 0 || ay >= WORLD_H) { this.placeCooldown = 0.3; return; }
+
+    if (slot.id === ITEM.BUCKET) {
+      // scoop: the cell you are looking into must be a still SOURCE
+      if (this.world.getVoxel(ax, ay, az) === B.WATER) {
+        this.world.setVoxelEdited(ax, ay, az, B.AIR);
+        this.world.fluid.scheduleNeighbours(ax, ay, az);
+        this.particles.spawnSplash(ax + 0.5, ay + 0.8, az + 0.5, 0.8);
+        this.audio.splash(0.75);
+        if (!creative) inv.hotbar[inv.sel] = { id: ITEM.BUCKET_WATER, count: 1 };
+        this.swingTimer = 0.28;
+        this.invDirty = true;
+        UI.refreshHotbar();
+        UI.buildHeld(this);
+      } else {
+        UI.toast('Aim at still water to scoop a source');
+      }
+      this.placeCooldown = 0.32;
+      return;
+    }
+
+    // water bucket: pour a source into the cell you are looking at
+    const existing = this.world.getVoxel(ax, ay, az);
+    if (existing === B.AIR || PLANT_IDS.has(existing) || isWaterId(existing)) {
+      this.world.setVoxelEdited(ax, ay, az, B.WATER);
+      this.world.fluid.scheduleNeighbours(ax, ay, az);
+      this.particles.spawnSplash(ax + 0.5, ay + 0.9, az + 0.5, 0.9);
+      this.audio.splash(0.8);
+      if (!creative) inv.hotbar[inv.sel] = { id: ITEM.BUCKET, count: 1 };
+      this.swingTimer = 0.28;
+      this.invDirty = true;
+      UI.refreshHotbar();
+      UI.buildHeld(this);
+    }
+    this.placeCooldown = 0.32;
+  }
+
+  // --------------------------------------------------------------------------
+  // tools: mining speed, tier-gated drops, durability
+  // --------------------------------------------------------------------------
+  /** Seconds to break `block` with whatever is in hand right now. */
+  _miningTime(block) {
+    const base = HARDNESS[block] ?? 1;
+    const slot = selectedSlot();
+    const tool = slot ? toolOf(slot.id) : null;
+    const fam = TOOL_FAMILY[block];
+    if (tool && fam === tool.kind) return base / tool.speed;   // right tool: fast
+    return base;
+  }
+
+  /** What a broken block yields — null when the pickaxe tier is too low. */
+  _dropForBreak(id) {
+    const req = PICK_TIER_REQ[id];
+    if (req !== undefined && this.mode !== 'creative') {
+      const slot = selectedSlot();
+      const tool = slot ? toolOf(slot.id) : null;
+      const tier = (tool && tool.kind === 'pick') ? tool.tier : 0;
+      if (tier < req) return null;    // breaks, but collects nothing
+    }
+    return dropFor(id);
+  }
+
+  /** One point of wear on the held tool (survival only). */
+  _damageTool() {
+    if (this.mode !== 'creative') {
+      const s = inv.hotbar[inv.sel];
+      const t = s ? toolOf(s.id) : null;
+      if (s && t) {
+        s.dur = (s.dur !== undefined ? s.dur : t.dur) - 1;
+        if (s.dur <= 0) {
+          UI.toast(itemName(s.id) + ' broke!');
+          this.audio.digSound('stone');
+          inv.hotbar[inv.sel] = null;
+          UI.buildHeld(this);
+        }
+        UI.refreshHotbar();
+        this.invDirty = true;
+      }
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // furnaces: per-block smelting state, ticking, persistence
+  // --------------------------------------------------------------------------
+  _furnaceAt(x, y, z) {
+    const k = x + ',' + y + ',' + z;
+    let f = this.furnaces.get(k);
+    if (!f) {
+      f = { in: null, fuel: null, out: null, burn: 0, burnMax: 1, cook: SMELT_TIME };
+      this.furnaces.set(k, f);
+    }
+    return f;
+  }
+
+  /** Breaking a furnace returns everything inside it. */
+  _dumpFurnaceContents(x, y, z) {
+    const k = x + ',' + y + ',' + z;
+    const f = this.furnaces.get(k);
+    if (!f) return;
+    for (const s of [f.in, f.fuel, f.out]) {
+      if (s) {
+        if (addToInventory(s.id, s.count, s.dur) < s.count) UI.toast('Inventory full — furnace items lost');
+      }
+    }
+    this.furnaces.delete(k);
+    if (this.openFurnaceKey === k) this.openFurnaceKey = null;
+    this.invDirty = true;
+    UI.refreshHotbar();
+  }
+
+  /** Smelt ticks: burn fuel, cook input, fill output. */
+  _updateFurnaces(dt) {
+    if (this.furnaces.size === 0) return;
+    let anyChanged = false;
+    let barsMoving = false;
+    for (const [key, f] of this.furnaces) {
+      const smeltOut = f.in ? SMELT_MAP[f.in.id] : undefined;
+      const outRoom = smeltOut !== undefined &&
+        (!f.out || (f.out.id === smeltOut && f.out.count < stackMaxFor(smeltOut)));
+      if (f.burn > 0) {
+        f.burn -= dt;
+        barsMoving = true;
+        if (smeltOut !== undefined && outRoom) {
+          f.cook -= dt;
+          if (f.cook <= 0) {
+            f.cook = SMELT_TIME;
+            f.in.count--;
+            if (f.in.count <= 0) f.in = null;
+            if (f.out) f.out.count++;
+            else f.out = { id: smeltOut, count: 1 };
+            anyChanged = true;
+          }
+        } else {
+          f.cook = SMELT_TIME;      // nothing cookable: pause the pot
+        }
+      } else {
+        f.cook = SMELT_TIME;
+        if (smeltOut !== undefined && outRoom && f.fuel && FUEL_MAP[f.fuel.id] !== undefined) {
+          f.burnMax = f.burn = FUEL_MAP[f.fuel.id] * SMELT_TIME;
+          f.fuel.count--;
+          if (f.fuel.count <= 0) f.fuel = null;
+          anyChanged = true;
+        }
+      }
+    }
+    if (anyChanged) this.furnacesDirty = true;
+    if (this.uiOpen === 'furnace' && (anyChanged || barsMoving)) UI.refreshFurnace();
+  }
+
+  serializeFurnaces() {
+    const out = [];
+    for (const [k, f] of this.furnaces) {
+      out.push(k, slotToJSON(f.in), slotToJSON(f.fuel), slotToJSON(f.out),
+        Math.round(f.burn * 10) / 10, Math.round(f.burnMax * 10) / 10, Math.round(f.cook * 10) / 10);
+    }
+    return out;
+  }
+
+  loadFurnaces(arr) {
+    this.furnaces.clear();
+    if (!Array.isArray(arr)) return;
+    for (let i = 0; i + 6 < arr.length; i += 7) {
+      this.furnaces.set(arr[i], {
+        in: slotFromJSON(arr[i + 1]), fuel: slotFromJSON(arr[i + 2]), out: slotFromJSON(arr[i + 3]),
+        burn: +arr[i + 4] || 0, burnMax: +arr[i + 5] || 1, cook: +arr[i + 6] || SMELT_TIME,
+      });
+    }
   }
 
   _pickBlock() {
@@ -5421,7 +6436,33 @@ class Game {
     if (this.heldMesh) {
       this.blockGroup.remove(this.heldMesh);
       this.heldMesh.geometry.dispose();
+      if (this.heldMesh.material !== this.terrainMat) {
+        if (this.heldMesh.material.map && this.heldMesh.material !== this.handMat) this.heldMesh.material.map.dispose();
+        this.heldMesh.material.dispose();
+      }
       this.heldMesh = null;
+    }
+    if (id > 0 && isItemId(id)) {
+      // items ride as a pixel-art sprite plane, angled like a held tool
+      const art = itemArtFor(id);
+      if (art) {
+        const tex = new THREE.CanvasTexture(art.canvas16);
+        tex.magFilter = THREE.NearestFilter;
+        tex.minFilter = THREE.NearestFilter;
+        tex.colorSpace = THREE.SRGBColorSpace;
+        const mat = new THREE.MeshBasicMaterial({
+          map: tex, transparent: true, alphaTest: 0.5,
+          side: THREE.DoubleSide, fog: false,
+        });
+        const geo = new THREE.PlaneGeometry(0.62, 0.62);
+        this.heldMesh = new THREE.Mesh(geo, mat);
+        this.heldMesh.frustumCulled = false;
+        this.heldMesh.renderOrder = 3;
+        this.heldMesh.position.set(0.04, 0.30, 0.0);
+        this.heldMesh.rotation.set(-0.4, 0.6, 0.32);
+        this.blockGroup.add(this.heldMesh);
+      }
+      return;
     }
     if (id > 0 && TILES[id]) {
       this.heldMesh = new THREE.Mesh(this._heldGeometryFor(id), this.terrainMat);
@@ -5451,6 +6492,10 @@ class Game {
     // impact flash: a quick bright pulse when the swing connects
     if (this.handFlash > 0.001) c.lerp(this.flashTint, this.handFlash * 0.4);
     this.handMat.color.copy(c);
+    // held item sprites follow the same light so they never glow at night
+    if (this.heldMesh && this.heldMesh.material !== this.terrainMat && this.heldMesh.material.color) {
+      this.heldMesh.material.color.copy(c);
+    }
   }
 
   _updateHeld(dt) {
@@ -5532,11 +6577,13 @@ class Game {
         health: this.dead ? this.maxHealth : this.health,
       },
       inv: invToJSON(),
+      furnaces: this.serializeFurnaces(),
       stats: { placed: this.blocksPlaced, broken: this.blocksBroken },
       savedAt: Date.now(),
     };
     const ok = writeSaveData(data);
     this.invDirty = false;
+    this.furnacesDirty = false;
     if (notify) {
       if (ok) UI.flashSaved();
       else if (!this.saveWarned) {
@@ -5758,11 +6805,15 @@ class Game {
     const swimMoving = this.player.inWater && this.state === 'playing' && Math.hypot(this.player.velocity.x, this.player.velocity.z) > 1.4;
     this.audio.setAmbience(1 - this.rig.nightFactor * 0.6, this.waterProximity, swimMoving ? 1 : 0);
 
-    // --- world streaming + fluid ticks ---
+    // --- world streaming + fluid + leaf-decay ticks ---
     // chunk mesh uploads run on a per-frame time budget: smooth pacing at
     // any render distance, full throughput while a backlog waits
     this.world.processUploads(this.world.pendingResults.length > 48 ? 8 : 3);
     this.world.fluid.update(dt);
+    this.world.leaves.update(dt);
+
+    // --- furnaces keep smelting while you play ---
+    if (this.state === 'playing') this._updateFurnaces(dt);
 
     // --- entity systems: falling blocks + primed TNT ---
     if (this.state === 'playing') {
@@ -5780,7 +6831,7 @@ class Game {
       this.autosaveTimer -= dt;
       if (this.autosaveTimer <= 0) {
         this.autosaveTimer = 20;
-        if (this.world.consumeEditsChanged() || this.invDirty) this.saveGame(false);
+        if (this.world.consumeEditsChanged() || this.invDirty || this.furnacesDirty) this.saveGame(false);
       }
     }
 
@@ -5880,6 +6931,10 @@ const UI = {
       confirmTitle: $('confirm-title'), confirmText: $('confirm-text'),
       hearts: $('hearts'), bubbles: $('bubbles'), statusBars: $('status-bars'),
       damageVignette: $('damage-vignette'), death: $('death'), deathCause: $('death-cause'),
+      craftGrid: $('craft-grid'), craftTitle: $('craft-title'), craftResult: $('craft-result'),
+      craftBox: $('crafting-box'), paletteItems: $('palette-items'),
+      furnace: $('furnace'), furnIn: $('furn-in'), furnFuel: $('furn-fuel'), furnOut: $('furn-out'),
+      furnFlame: $('furn-flame'), furnCook: $('furn-cook'),
     };
     this._heldNameTimer = 0;
     this._lastHealth = -1;
@@ -5907,13 +6962,28 @@ const UI = {
     for (let i = 0; i < 9; i++) {
       const d = document.createElement('div');
       d.className = 'hb-slot';
-      d.innerHTML = '<div class="slot-icon"></div><span class="slot-count"></span><span class="slot-key">' + (i + 1) + '</span>';
+      d.innerHTML = '<div class="slot-icon"></div><span class="slot-count"></span><span class="slot-dur"><i></i></span><span class="slot-key">' + (i + 1) + '</span>';
       this.els.hotbar.appendChild(d);
     }
 
     // inventory screen grids
     this._buildInvGrid(this.els.mainGrid, 'main', 27);
     this._buildInvGrid(this.els.hotbarGrid, 'hotbar', 9);
+    // crafting grid: 3×3 always; the pocket 2×2 hides the outer ring
+    for (let i = 0; i < 9; i++) {
+      const d = document.createElement('div');
+      d.className = 'inv-slot' + ((i % 3 === 2 || i >= 6) ? ' c3' : '');
+      d.innerHTML = '<div class="slot-icon"></div><span class="slot-count"></span><span class="slot-dur"><i></i></span>';
+      d.addEventListener('mousedown', (e) => { e.preventDefault(); this._slotClick('craft', i, e.button, e.shiftKey); });
+      d.addEventListener('contextmenu', (e) => e.preventDefault());
+      this.els.craftGrid.appendChild(d);
+    }
+    this.els.craftResult.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      this.takeCraftResult(e.shiftKey);
+    });
+    this.els.craftResult.addEventListener('contextmenu', (e) => e.preventDefault());
+
     for (const id of PLACEABLE) {
       const d = document.createElement('div');
       d.className = 'inv-slot';
@@ -5922,6 +6992,32 @@ const UI = {
       d.title = BLOCK_NAME[id];
       d.addEventListener('mousedown', (e) => { e.preventDefault(); this._paletteClick(id, e.shiftKey); });
       this.els.paletteGrid.appendChild(d);
+    }
+    // creative item palette: buckets + the tool chest
+    const ITEM_PALETTE = [
+      ITEM.BUCKET, ITEM.BUCKET_WATER,
+      ITEM.PICK_WOOD, ITEM.PICK_STONE, ITEM.PICK_IRON, ITEM.PICK_DIAMOND,
+      ITEM.AXE_WOOD, ITEM.AXE_STONE, ITEM.AXE_IRON, ITEM.AXE_DIAMOND,
+      ITEM.SHOVEL_WOOD, ITEM.SHOVEL_STONE, ITEM.SHOVEL_IRON, ITEM.SHOVEL_DIAMOND,
+      ITEM.STICK, ITEM.COAL, ITEM.IRON_INGOT, ITEM.GOLD_INGOT, ITEM.DIAMOND,
+    ];
+    for (const id of ITEM_PALETTE) {
+      const d = document.createElement('div');
+      d.className = 'inv-slot';
+      d.innerHTML = '<div class="slot-icon"></div>';
+      const url = iconForAny(game.atlasCanvas, id);
+      if (url) d.querySelector('.slot-icon').style.backgroundImage = 'url(' + url + ')';
+      d.title = itemName(id);
+      d.addEventListener('mousedown', (e) => { e.preventDefault(); this._paletteClick(id, e.shiftKey); });
+      this.els.paletteItems.appendChild(d);
+    }
+
+    // furnace slot clicks
+    this.els.furnIn.addEventListener('mousedown', (e) => { e.preventDefault(); this._furnSlotClick('in', e.button); });
+    this.els.furnFuel.addEventListener('mousedown', (e) => { e.preventDefault(); this._furnSlotClick('fuel', e.button); });
+    this.els.furnOut.addEventListener('mousedown', (e) => { e.preventDefault(); this._furnSlotClick('out', e.button); });
+    for (const el of [this.els.furnIn, this.els.furnFuel, this.els.furnOut]) {
+      el.addEventListener('contextmenu', (e) => e.preventDefault());
     }
 
     this._wireButtons();
@@ -5954,7 +7050,7 @@ const UI = {
     for (let i = 0; i < n; i++) {
       const d = document.createElement('div');
       d.className = 'inv-slot';
-      d.innerHTML = '<div class="slot-icon"></div><span class="slot-count"></span>';
+      d.innerHTML = '<div class="slot-icon"></div><span class="slot-count"></span><span class="slot-dur"><i></i></span>';
       d.addEventListener('mousedown', (e) => { e.preventDefault(); this._slotClick(sec, i, e.button, e.shiftKey); });
       d.addEventListener('contextmenu', (e) => e.preventDefault());
       container.appendChild(d);
@@ -6035,7 +7131,7 @@ const UI = {
   },
 
   // ---- inventory screen -----------------------------------------------------
-  openInventory() {
+  openInventory(atTable = false) {
     const g = this.game;
     if (g.state !== 'playing' || g.uiOpen) return;
     g.uiOpen = 'inventory';
@@ -6045,10 +7141,14 @@ const UI = {
     g.breakHeld = false;
     g.placeHeld = false;
     g._resetMining();
-    // the palette is creative-only — survival players mine and collect what
-    // they place (the starter kit in the hotbar is their head start)
+    // the palette is creative-only — survival players mine and craft what
+    // they place (the pocket 2×2 grid is their head start)
     this.els.creativePalette.classList.toggle('hidden', g.mode !== 'creative');
     this.els.invTitle.textContent = 'Inventory' + (g.mode === 'creative' ? ' — creative' : ' — survival');
+    // 2×2 pocket grid vs the full 3×3 at a crafting table
+    craft.big = !!atTable;
+    this.els.craftGrid.classList.toggle('small', !atTable);
+    this.els.craftTitle.textContent = atTable ? 'Crafting Table' : 'Crafting';
     this.els.inventory.classList.remove('hidden');
     this.refreshInventory();
     g.audio.uiClick();
@@ -6057,13 +7157,14 @@ const UI = {
   closeInventory(relock) {
     const g = this.game;
     if (g.uiOpen !== 'inventory') return;
-    // return whatever is on the cursor back to storage
+    // anything left on the cursor or in the grid goes back to storage
     if (g.cursorStack) {
-      const left = addToInventory(g.cursorStack.id, g.cursorStack.count);
+      const left = g.cursorStack.count - addToInventory(g.cursorStack.id, g.cursorStack.count, g.cursorStack.dur);
       if (left > 0) this.toast('No room — cursor stack lost');
       g.cursorStack = null;
       g.invDirty = true;
     }
+    returnCraftGrid();
     this.els.inventory.classList.add('hidden');
     this.els.cursorStack.classList.add('hidden');
     g.uiOpen = null;
@@ -6072,31 +7173,128 @@ const UI = {
     UI.buildHeld(g);
   },
 
+  // ---- furnace screen -------------------------------------------------------
+  openFurnace(x, y, z) {
+    const g = this.game;
+    if (g.state !== 'playing' || g.uiOpen) return;
+    g.uiOpen = 'furnace';
+    g.suppressUnlockPause = true;
+    g._exitPointerLock();
+    g._keys.clear();
+    g.breakHeld = false;
+    g.placeHeld = false;
+    g._resetMining();
+    g._furnaceAt(x, y, z);          // ensure the state exists
+    this.els.furnace.classList.remove('hidden');
+    this.refreshFurnace();
+    g.audio.uiClick();
+  },
+
+  closeFurnace(relock) {
+    const g = this.game;
+    if (g.uiOpen !== 'furnace') return;
+    if (g.cursorStack) {
+      const left = g.cursorStack.count - addToInventory(g.cursorStack.id, g.cursorStack.count, g.cursorStack.dur);
+      if (left > 0) this.toast('No room — cursor stack lost');
+      g.cursorStack = null;
+      g.invDirty = true;
+    }
+    this.els.furnace.classList.add('hidden');
+    this.els.cursorStack.classList.add('hidden');
+    g.uiOpen = null;
+    g.openFurnaceKey = null;
+    if (relock && g.state === 'playing') g._requestPointerLock();
+    this.refreshHotbar();
+  },
+
+  refreshFurnace() {
+    const g = this.game;
+    if (g.uiOpen !== 'furnace' || !g.openFurnaceKey) return;
+    const f = g.furnaces.get(g.openFurnaceKey);
+    if (!f) return;
+    this._fillSlotEl(this.els.furnIn, f.in);
+    this._fillSlotEl(this.els.furnFuel, f.fuel);
+    this._fillSlotEl(this.els.furnOut, f.out);
+    const flame = this.els.furnFlame.firstElementChild;
+    flame.style.height = (f.burnMax > 0 ? Math.max(0, Math.min(1, f.burn / f.burnMax)) * 100 : 0).toFixed(1) + '%';
+    const cook = this.els.furnCook.firstElementChild;
+    cook.style.width = (Math.max(0, Math.min(1, 1 - f.cook / SMELT_TIME)) * 100).toFixed(1) + '%';
+    // live cursor stack over the furnace too
+    if (g.cursorStack) {
+      this.els.cursorStack.classList.remove('hidden');
+      this.els.cursorStack.querySelector('.slot-icon').style.backgroundImage = 'url(' + iconForAny(g.atlasCanvas, g.cursorStack.id) + ')';
+      this.els.cursorStack.querySelector('.slot-count').textContent = g.cursorStack.count;
+    } else {
+      this.els.cursorStack.classList.add('hidden');
+    }
+  },
+
+  _furnSlotClick(which, button) {
+    const g = this.game;
+    if (g.uiOpen !== 'furnace' || !g.openFurnaceKey) return;
+    const f = g.furnaces.get(g.openFurnaceKey);
+    if (!f) return;
+    const cur = g.cursorStack;
+    if (which === 'out') {
+      if (!f.out) return;
+      if (!cur) { g.cursorStack = f.out; f.out = null; }
+      else if (cur.id === f.out.id && !toolOf(cur.id) && cur.count + f.out.count <= stackMaxFor(cur.id)) {
+        cur.count += f.out.count; f.out = null;
+      } else return;
+    } else if (cur) {
+      if (which === 'in' && SMELT_MAP[cur.id] === undefined) { this.toast('That does not smelt'); return; }
+      if (which === 'fuel' && FUEL_MAP[cur.id] === undefined) { this.toast('That is not fuel'); return; }
+      if (f[which]) {
+        // swap cursor and slot
+        const tmp = f[which];
+        f[which] = cur;
+        g.cursorStack = tmp;
+      } else {
+        f[which] = cur;
+        g.cursorStack = null;
+      }
+    } else if (f[which]) {
+      g.cursorStack = f[which];
+      f[which] = null;
+    }
+    g.furnacesDirty = true;
+    g.audio.popSound();
+    this.refreshFurnace();
+  },
+
   _slotClick(sec, i, button, shift) {
     const g = this.game;
-    const arr = sec === 'hotbar' ? inv.hotbar : inv.main;
+    const arr = sec === 'hotbar' ? inv.hotbar : (sec === 'craft' ? craft.grid : inv.main);
     const slot = arr[i];
 
-    if (shift && slot && !g.cursorStack) {
-      // quick move between sections
+    // the crafting grid never shift-moves; it behaves like a plain slot set
+    if (shift && sec !== 'craft' && slot && !g.cursorStack) {
+      // quick move between sections (tools move whole — they never stack)
       const other = sec === 'hotbar' ? inv.main : inv.hotbar;
-      let remaining = slot.count;
-      for (let k = 0; k < other.length && remaining > 0; k++) {
-        const s = other[k];
-        if (s && s.id === slot.id && s.count < STACK_MAX) {
-          const add = Math.min(STACK_MAX - s.count, remaining);
-          s.count += add;
-          remaining -= add;
+      const isTool = !!toolOf(slot.id);
+      if (isTool) {
+        for (let k = 0; k < other.length; k++) {
+          if (!other[k]) { other[k] = slot; arr[i] = null; break; }
         }
-      }
-      for (let k = 0; k < other.length && remaining > 0; k++) {
-        if (!other[k]) {
-          other[k] = { id: slot.id, count: remaining };
-          remaining = 0;
+      } else {
+        let remaining = slot.count;
+        for (let k = 0; k < other.length && remaining > 0; k++) {
+          const s = other[k];
+          if (s && s.id === slot.id && s.count < STACK_MAX) {
+            const add = Math.min(STACK_MAX - s.count, remaining);
+            s.count += add;
+            remaining -= add;
+          }
         }
+        for (let k = 0; k < other.length && remaining > 0; k++) {
+          if (!other[k]) {
+            other[k] = { id: slot.id, count: remaining };
+            remaining = 0;
+          }
+        }
+        if (remaining <= 0) arr[i] = null;
+        else slot.count = remaining;
       }
-      if (remaining <= 0) arr[i] = null;
-      else slot.count = remaining;
       g.invDirty = true;
       g.audio.uiClick();
       this.refreshInventory();
@@ -6105,16 +7303,17 @@ const UI = {
     }
 
     if (button === 2) {
-      // right click: split / place one
+      // right click: split / place one (tools are never splittable)
       if (g.cursorStack) {
+        const cur = g.cursorStack;
         if (!slot) {
-          arr[i] = { id: g.cursorStack.id, count: 1 };
-          g.cursorStack.count--;
-        } else if (slot.id === g.cursorStack.id && slot.count < STACK_MAX) {
+          if (toolOf(cur.id)) { arr[i] = cur; g.cursorStack = null; }
+          else { arr[i] = { id: cur.id, count: 1 }; cur.count--; }
+        } else if (slot.id === cur.id && !toolOf(cur.id) && slot.count < STACK_MAX) {
           slot.count++;
-          g.cursorStack.count--;
+          cur.count--;
         }
-        if (g.cursorStack.count <= 0) g.cursorStack = null;
+        if (g.cursorStack && g.cursorStack.count <= 0) g.cursorStack = null;
       } else if (slot && slot.count > 1) {
         const take = Math.ceil(slot.count / 2);
         g.cursorStack = { id: slot.id, count: take };
@@ -6125,8 +7324,9 @@ const UI = {
         arr[i] = null;
       }
     } else {
-      // left click: pick up / place / swap / merge
-      if (g.cursorStack && slot && slot.id === g.cursorStack.id) {
+      // left click: pick up / place / swap / merge (tools only swap)
+      if (g.cursorStack && slot && slot.id === g.cursorStack.id && !toolOf(slot.id)
+          && slot.count < STACK_MAX) {
         const add = Math.min(STACK_MAX - slot.count, g.cursorStack.count);
         slot.count += add;
         g.cursorStack.count -= add;
@@ -6144,8 +7344,11 @@ const UI = {
 
   _paletteClick(id, shift) {
     const g = this.game;
+    const t = toolOf(id);
     if (shift) {
-      addToInventory(id, STACK_MAX);
+      addToInventory(id, t ? 1 : STACK_MAX);
+    } else if (t) {
+      g.cursorStack = { id, count: 1, dur: t.dur };
     } else {
       g.cursorStack = { id, count: STACK_MAX };
     }
@@ -6158,13 +7361,59 @@ const UI = {
   _fillSlotEl(el, slot, selected) {
     const icon = el.querySelector('.slot-icon');
     const count = el.querySelector('.slot-count');
+    const dur = el.querySelector('.slot-dur');
     if (slot) {
-      icon.style.backgroundImage = 'url(' + iconFor(this.game.atlasCanvas, slot.id) + ')';
+      icon.style.backgroundImage = 'url(' + iconForAny(this.game.atlasCanvas, slot.id) + ')';
       count.textContent = this.game.mode === 'creative' ? '∞' : (slot.count > 1 ? slot.count : '');
+      if (dur) {
+        const t = toolOf(slot.id);
+        if (t && slot.dur !== undefined && slot.dur < t.dur) {
+          const pct = slot.dur / t.dur;
+          dur.style.display = 'block';
+          const bar = dur.firstElementChild;
+          bar.style.width = (pct * 100).toFixed(1) + '%';
+          bar.style.background = pct > 0.5 ? '#4fc94f' : (pct > 0.2 ? '#e8c62e' : '#d5342a');
+        } else {
+          dur.style.display = 'none';
+        }
+      }
     } else {
       icon.style.backgroundImage = '';
       count.textContent = '';
+      if (dur) dur.style.display = 'none';
     }
+  },
+
+  /** Take (or shift-craft-all) the crafting result. */
+  takeCraftResult(shift) {
+    const g = this.game;
+    let res = matchCrafting();
+    if (!res) return;
+    if (shift) {
+      let guard = 0;
+      while (res && guard++ < 64) {
+        if (!inventoryHasRoomFor(res.id)) break;
+        addToInventory(res.id, res.n);
+        consumeCraftGrid();
+        res = matchCrafting();
+      }
+      g.audio.uiConfirm();
+    } else {
+      const cs = g.cursorStack;
+      if (cs) {
+        if (cs.id !== res.id || toolOf(res.id)) return;      // cursor is busy
+        if (cs.count + res.n > stackMaxFor(res.id)) return;
+        cs.count += res.n;
+      } else {
+        const t = toolOf(res.id);
+        g.cursorStack = t ? { id: res.id, count: 1, dur: t.dur } : { id: res.id, count: res.n };
+      }
+      consumeCraftGrid();
+      g.audio.uiConfirm();
+    }
+    g.invDirty = true;
+    this.refreshInventory();
+    this.refreshHotbar();
   },
 
   refreshInventory() {
@@ -6177,9 +7426,24 @@ const UI = {
       this._fillSlotEl(hbEls[i], inv.hotbar[i]);
       hbEls[i].style.background = i === inv.sel ? '#c3dce8' : '';
     }
+    // crafting grid + live result
+    const cgEls = this.els.craftGrid.children;
+    for (let i = 0; i < 9; i++) this._fillSlotEl(cgEls[i], craft.grid[i]);
+    const res = matchCrafting();
+    if (res) {
+      this.els.craftResult.querySelector('.slot-icon').style.backgroundImage = 'url(' + iconForAny(g.atlasCanvas, res.id) + ')';
+      this.els.craftResult.querySelector('.slot-count').textContent = res.n > 1 ? res.n : '';
+      this.els.craftResult.title = itemName(res.id);
+      this.els.craftResult.style.cursor = 'pointer';
+    } else {
+      this.els.craftResult.querySelector('.slot-icon').style.backgroundImage = '';
+      this.els.craftResult.querySelector('.slot-count').textContent = '';
+      this.els.craftResult.title = '';
+      this.els.craftResult.style.cursor = 'default';
+    }
     if (g.cursorStack) {
       this.els.cursorStack.classList.remove('hidden');
-      this.els.cursorStack.querySelector('.slot-icon').style.backgroundImage = 'url(' + iconFor(g.atlasCanvas, g.cursorStack.id) + ')';
+      this.els.cursorStack.querySelector('.slot-icon').style.backgroundImage = 'url(' + iconForAny(g.atlasCanvas, g.cursorStack.id) + ')';
       this.els.cursorStack.querySelector('.slot-count').textContent = g.cursorStack.count;
     } else {
       this.els.cursorStack.classList.add('hidden');
@@ -6200,7 +7464,7 @@ const UI = {
 
   showHeldName() {
     const slot = selectedSlot();
-    const name = slot ? BLOCK_NAME[slot.id] : null;
+    const name = slot ? itemName(slot.id) : null;
     if (!name) { this.els.heldName.style.opacity = 0; return; }
     this.els.heldName.textContent = name;
     this.els.heldName.style.opacity = 1;
@@ -6381,6 +7645,7 @@ if (bootSave) {
   game.time = typeof bootSave.time === 'number' ? bootSave.time : 0;
   game.mode = bootSave.mode === 'creative' ? 'creative' : 'survival';
   invFromJSON(bootSave.inv);
+  game.loadFurnaces(bootSave.furnaces);
   game.blocksPlaced = (bootSave.stats && bootSave.stats.placed) || 0;
   game.blocksBroken = (bootSave.stats && bootSave.stats.broken) || 0;
   if (game.savedPlayer) {
@@ -6404,7 +7669,7 @@ game.start();
 // ---- deterministic test hooks (console / automation) ----
 window.__voxel = {
   game,
-  version: 4,
+  version: 5,
   startContinue() {
     UI.showMenu(false);
     game.startPlaying(true);
@@ -6448,10 +7713,25 @@ window.__voxel = {
   setMode(m) { if (game.mode !== m) game._toggleMode(); return game.mode; },
   openInventory() { UI.openInventory(); return game.uiOpen; },
   closeInventory() { UI.closeInventory(false); return game.uiOpen; },
+  openFurnace(x, y, z) { if (game.world.getVoxel(x, y, z) === B.FURNACE) { game.openFurnaceKey = x + ',' + y + ',' + z; UI.openFurnace(x, y, z); } return game.uiOpen; },
+  closeFurnace() { UI.closeFurnace(false); return game.uiOpen; },
   giveBlock(id, count) { addToInventory(id, count || 1); UI.refreshHotbar(); return countOf(id); },
   countOf: (id) => countOf(id),
   inventoryJSON: () => invToJSON(),
   findShoreline: () => game.findShoreline(),
+  // ---- v5: crafting / furnace / tools ----
+  craft: {
+    setGrid(ids9) {          // ids: flat 9 array (0 = empty) of block/item ids
+      for (let i = 0; i < 9; i++) craft.grid[i] = ids9 && ids9[i] ? { id: ids9[i], count: 1 } : null;
+      return craft.grid.map(s => (s ? s.id : 0));
+    },
+    match() { return matchCrafting(); },
+    take() { UI.takeCraftResult(false); return matchCrafting(); },
+  },
+  furnaceStateAt(x, y, z) { return game._furnaceAt(x, y, z); },
+  itemName: (id) => itemName(id),
+  toolOf: (id) => toolOf(id),
+  miningTime: (block) => game._miningTime(block),
   // ---- v4 systems ----
   health() { return game.health; },
   setHealth(n) { game.health = Math.max(0, Math.min(game.maxHealth, n)); UI.refreshStatus(); return game.health; },
