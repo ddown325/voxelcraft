@@ -175,7 +175,7 @@
         <button data-q="low">Low</button><button data-q="medium">Med</button><button data-q="high">High</button>
       </div>
     </div>
-    <div class="set-row"><label>Render distance</label><input type="range" id="set-rd" min="3" max="10" step="1" value="6"><span class="val" id="val-rd">6</span></div>
+    <div class="set-row"><label>Render distance <small>(chunks — big values stream in over a few seconds)</small></label><input type="range" id="set-rd" min="4" max="20" step="1" value="8"><span class="val" id="val-rd">8</span></div>
     <div class="set-row"><label>Field of view</label><input type="range" id="set-fov" min="60" max="100" step="1" value="75"><span class="val" id="val-fov">75°</span></div>
     <div class="set-row"><label>Mouse sensitivity</label><input type="range" id="set-sens" min="20" max="200" step="5" value="100"><span class="val" id="val-sens">1.0×</span></div>
     <div class="set-row"><label>Volume</label><input type="range" id="set-vol" min="0" max="100" step="5" value="80"><span class="val" id="val-vol">80%</span></div>
@@ -275,7 +275,7 @@ const T = {
   GRASS_TOP: 0, GRASS_SIDE: 1, DIRT: 2, STONE: 3, COBBLE: 4, SAND: 5, LOG_SIDE: 6,
   LOG_TOP: 7, LEAVES: 8, PLANKS: 9, GLASS: 10, BRICK: 11, SNOW: 12, SNOW_SIDE: 13,
   GRAVEL: 14, TALLGRASS: 15, FLOWER_RED: 16, FLOWER_YELLOW: 17, BEDROCK: 18,
-  SPONGE: 19, ARM_SKIN: 20, WATER_TILE: 21,
+  SPONGE: 19, ARM_SKIN: 20, WATER_TILE: 21, ARM_FIST: 22,
 };
 
 // [px, nx, py, ny, pz, nz] atlas tiles per block (mirrors the worker table)
@@ -339,18 +339,19 @@ const PLACEABLE = [
 ];
 const PLANT_IDS = new Set([B.TALLGRASS, B.FLOWER_RED, B.FLOWER_YELLOW]);
 const STACK_MAX = 64;
+const NEIGH6 = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
 
 const ATLAS_TILES = 8, TILE_PX = 16, ATLAS_PX = ATLAS_TILES * TILE_PX;
 const PLAYER_HALF_W = 0.3, PLAYER_HEIGHT = 1.8, PLAYER_EYE = 1.62, REACH = 6;
 const DAY_LENGTH = 600;
-const WORKER_COUNT = 3;
+const WORKER_COUNT = Math.min(6, Math.max(3, (navigator.hardwareConcurrency || 4) - 1));
 const SAVE_KEY = 'voxelcraft.save.v1';
 const SETTINGS_KEY = 'voxelcraft.settings.v1';
 
 const QUALITY_PRESETS = {
   low: { name: 'Low', waterDetail: 0.0, dpr: 1.0, clouds: false, particles: 80, renderDistance: 4 },
-  medium: { name: 'Medium', waterDetail: 0.5, dpr: 1.5, clouds: true, particles: 160, renderDistance: 6 },
-  high: { name: 'High', waterDetail: 1.0, dpr: 2.0, clouds: true, particles: 240, renderDistance: 8 },
+  medium: { name: 'Medium', waterDetail: 0.5, dpr: 1.5, clouds: true, particles: 160, renderDistance: 8 },
+  high: { name: 'High', waterDetail: 1.0, dpr: 2.0, clouds: true, particles: 240, renderDistance: 12 },
 };
 
 // ============================================================================
@@ -568,7 +569,7 @@ function meshChunk(padded) {
 
   var o = { p: [], u: [], c: [], i: [] };
   var fo = { p: [], u: [], c: [], i: [], s: [] };
-  var w = { p: [], u: [], d: [], l: [], i: [] };
+  var w = { p: [], u: [], d: [], l: [], f: [], i: [] };
 
   function hash3f(x, y, z) {
     var h = Math.imul(x, 0x27d4eb2d) ^ Math.imul(y, 0x9e3779b9) ^ Math.imul(z, 0x165667b1);
@@ -649,6 +650,59 @@ function meshChunk(padded) {
     return lv >= 8 ? 0.875 : Math.max(0.11, 0.875 * lv / 8);
   }
 
+  // Flow field for the shader's current: [dirX, dirZ, speed].
+  //   * speed 0      -> still water (settled lakes, ocean interior)
+  //   * speed 0..1   -> surface current pointing downhill (dir unnormalised)
+  //   * speed >= 1.5 -> falling / churned water (waterfall columns, pour lips)
+  // The direction is the level gradient: water always runs from high level
+  // to low, and out toward any open air it is spilling into.
+  function waterFlow(x, y, z, b, above, below) {
+    if (isWater(above)) {
+      // water overhead: a real POUR only when the cell is laterally exposed
+      // (a column hanging in air).  Cells submerged inside a lake or the
+      // sea must stay CALM — flagging them as falling used to wash the
+      // entire ocean floor in churn foam through the transparent surface.
+      var exposed = false;
+      if (!isWater(gp(x + 1, y, z)) && !OP[gp(x + 1, y, z)]) exposed = true;
+      else if (!isWater(gp(x - 1, y, z)) && !OP[gp(x - 1, y, z)]) exposed = true;
+      else if (!isWater(gp(x, y, z + 1)) && !OP[gp(x, y, z + 1)]) exposed = true;
+      else if (!isWater(gp(x, y, z - 1)) && !OP[gp(x, y, z - 1)]) exposed = true;
+      return exposed ? [0, 0, 2.0] : [0, 0, 0];
+    }
+    if (below === AIR || below === TALLGRASS || below === FLOWER_R || below === FLOWER_Y) {
+      return [0, 0, 2.0];                                    // pouring into air
+    }
+    // splash ring: a horizontal neighbour that is itself a falling column
+    // churns this cell and drives a hard outward current
+    var churn = 0;
+    var cdirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    var cfx = 0, cfz = 0;
+    for (var q = 0; q < 4; q++) {
+      var qx = cdirs[q][0], qz = cdirs[q][1];
+      if (isWater(gp(x + qx, y + 1, z + qz))) {
+        cfx -= qx * 2.2; cfz -= qz * 2.2; churn = 1;
+      }
+    }
+    if (churn) return [cfx, cfz, 1.25];
+    var lv = wLevel(b);
+    var fx = 0, fz = 0, drop = 0;
+    var open = (n) => n === AIR || n === TALLGRASS || n === FLOWER_R || n === FLOWER_Y;
+    var dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    for (var k = 0; k < 4; k++) {
+      var dx = dirs[k][0], dz = dirs[k][1];
+      var n = gp(x + dx, y, z + dz);
+      if (isWater(n)) {
+        var nl = wLevel(n);
+        if (nl < lv) { fx += dx * (lv - nl); fz += dz * (lv - nl); drop += (lv - nl); }
+      } else if (open(n) && lv > 1) {
+        fx += dx * 1.6; fz += dz * 1.6; drop += 1.6;            // spilling edge
+      }
+    }
+    if (drop <= 0) return [0, 0, 0];
+    var speed = Math.min(1, 0.28 + drop * 0.18);
+    return [fx, fz, speed];
+  }
+
   for (var x = 0; x < CX; x++) {
     for (var z = 0; z < CZ; z++) {
       for (var y = 0; y < H; y++) {
@@ -658,7 +712,9 @@ function meshChunk(padded) {
         if (isWater(b)) {
           var lv = wLevel(b);
           var above = gp(x, y + 1, z);
+          var below = gp(x, y - 1, z);
           var topH = waterHeight(x, y, z, b);
+          var fl = waterFlow(x, y, z, b, above, below);
           // depth drives the shader's shallow->deep colour ramp and foam:
           // falling columns read as deep blue water with foam only at the
           // lip and base; sources use their true column depth; thin flowing
@@ -673,15 +729,16 @@ function meshChunk(padded) {
             w.u.push(0, 0, 1, 0, 1, 1, 0, 1);
             w.d.push(dep, dep, dep, dep);
             w.l.push(lv, lv, lv, lv);
+            w.f.push(fl[0], fl[1], fl[2], fl[0], fl[1], fl[2], fl[0], fl[1], fl[2], fl[0], fl[1], fl[2]);
             w.i.push(base, base + 1, base + 2, base, base + 2, base + 3);
           }
-          var below = gp(x, y - 1, z);
           if (!isWater(below) && !OP[below]) {
             var bb = w.p.length / 3;
             w.p.push(x, y, z,  x + 1, y, z,  x + 1, y, z + 1,  x, y, z + 1);
             w.u.push(0, 0, 1, 0, 1, 1, 0, 1);
             w.d.push(1, 1, 1, 1);
             w.l.push(lv, lv, lv, lv);
+            w.f.push(fl[0], fl[1], fl[2], fl[0], fl[1], fl[2], fl[0], fl[1], fl[2], fl[0], fl[1], fl[2]);
             w.i.push(bb, bb + 1, bb + 2, bb, bb + 2, bb + 3);
           }
           // side faces: skip when the neighbour is water at an equal-or-higher
@@ -698,31 +755,46 @@ function meshChunk(padded) {
               if (nH >= topH - 0.001) continue;
               var bs1 = w.p.length / 3;
               var y0 = y + nH, y1 = y + topH;
-              if (f === 0 || f === 1) {
-                var ax = x + (face.d[0] > 0 ? 1 : 0);
-                w.p.push(ax, y0, z,  ax, y0, z + 1,  ax, y1, z + 1,  ax, y1, z);
-              } else {
-                var az = z + (face.d[2] > 0 ? 1 : 0);
+              // winding matches the face's outward normal (+X and -Z are
+              // reversed) so waterfalls render as FRONT faces and get the
+              // churned foam path, not the flat underside path
+              if (f === 0) {
+                var ax = x + 1;
+                w.p.push(ax, y0, z + 1,  ax, y0, z,  ax, y1, z,  ax, y1, z + 1);
+              } else if (f === 1) {
+                w.p.push(x, y0, z,  x, y0, z + 1,  x, y1, z + 1,  x, y1, z);
+              } else if (f === 4) {
+                var az = z + 1;
                 w.p.push(x, y0, az,  x + 1, y0, az,  x + 1, y1, az,  x, y1, az);
+              } else {
+                var azb = z;
+                w.p.push(x + 1, y0, azb,  x, y0, azb,  x, y1, azb,  x + 1, y1, azb);
               }
               w.u.push(0, 0, 1, 0, 1, 1, 0, 1);
               w.d.push(dep, dep, dep, dep);
               w.l.push(lv, lv, lv, lv);
+              w.f.push(fl[0], fl[1], fl[2], fl[0], fl[1], fl[2], fl[0], fl[1], fl[2], fl[0], fl[1], fl[2]);
               w.i.push(bs1, bs1 + 1, bs1 + 2, bs1, bs1 + 2, bs1 + 3);
               continue;
             }
             if (OP[nb]) continue;
             var bs = w.p.length / 3;
-            if (f === 0 || f === 1) {
-              var ax2 = x + (face.d[0] > 0 ? 1 : 0);
-              w.p.push(ax2, y, z,  ax2, y, z + 1,  ax2, y + topH, z + 1,  ax2, y + topH, z);
-            } else {
-              var az2 = z + (face.d[2] > 0 ? 1 : 0);
+            if (f === 0) {
+              var ax2 = x + 1;
+              w.p.push(ax2, y, z + 1,  ax2, y, z,  ax2, y + topH, z,  ax2, y + topH, z + 1);
+            } else if (f === 1) {
+              w.p.push(x, y, z,  x, y, z + 1,  x, y + topH, z + 1,  x, y + topH, z);
+            } else if (f === 4) {
+              var az2 = z + 1;
               w.p.push(x, y, az2,  x + 1, y, az2,  x + 1, y + topH, az2,  x, y + topH, az2);
+            } else {
+              var az3 = z;
+              w.p.push(x + 1, y, az3,  x, y, az3,  x, y + topH, az3,  x + 1, y + topH, az3);
             }
             w.u.push(0, 0, 1, 0, 1, 1, 0, 1);
             w.d.push(dep, dep, dep, dep);
             w.l.push(lv, lv, lv, lv);
+            w.f.push(fl[0], fl[1], fl[2], fl[0], fl[1], fl[2], fl[0], fl[1], fl[2], fl[0], fl[1], fl[2]);
             w.i.push(bs, bs + 1, bs + 2, bs, bs + 2, bs + 3);
           }
           continue;
@@ -754,7 +826,7 @@ function meshChunk(padded) {
   return {
     o: { p: new Float32Array(o.p), u: new Float32Array(o.u), c: new Uint8Array(o.c), i: new Uint32Array(o.i) },
     f: { p: new Float32Array(fo.p), u: new Float32Array(fo.u), c: new Uint8Array(fo.c), i: new Uint32Array(fo.i), s: new Float32Array(fo.s) },
-    w: { p: new Float32Array(w.p), u: new Float32Array(w.u), d: new Float32Array(w.d), l: new Float32Array(w.l), i: new Uint32Array(w.i) },
+    w: { p: new Float32Array(w.p), u: new Float32Array(w.u), d: new Float32Array(w.d), l: new Float32Array(w.l), fl: new Float32Array(w.f), i: new Uint32Array(w.i) },
   };
 }
 
@@ -772,7 +844,7 @@ self.onmessage = function (e) {
     var transfers = [
       res.o.p.buffer, res.o.u.buffer, res.o.c.buffer, res.o.i.buffer,
       res.f.p.buffer, res.f.u.buffer, res.f.c.buffer, res.f.i.buffer, res.f.s.buffer,
-      res.w.p.buffer, res.w.u.buffer, res.w.d.buffer, res.w.l.buffer, res.w.i.buffer,
+      res.w.p.buffer, res.w.u.buffer, res.w.d.buffer, res.w.l.buffer, res.w.fl.buffer, res.w.i.buffer,
     ];
     self.postMessage({ t: 'mesh', cx: msg.cx, cz: msg.cz, o: res.o, f: res.f, w: res.w, rev: msg.rev }, transfers);
     return;
@@ -972,19 +1044,52 @@ function buildAtlas(seed = 1337) {
     return base;
   });
 
-  // First-person arm: bottom ~60% is bare skin, top ~40% is the teal shirt
-  // sleeve (long faces are mapped fist-end = v0, shoulder = v1).
+  // First-person arm (tile v runs wrist->shoulder): top 5 rows are the teal
+  // shirt sleeve with a ribbed cuff, the rest bare forearm skin with a soft
+  // sun-warmed gradient and sparse hair speckle.
   paint(T.ARM_SKIN, (px, py) => {
-    if (py <= 6) {
-      // sleeve with a knitted texture and a darker cuff at the boundary
-      if (py === 6) return rgb(0x2e5b63);
+    if (py <= 4) {
+      // sleeve: fine knit with highlight band
       const knit = valueNoiseTile(px, py, 5, 12.5);
-      return mix(rgb(0x3d818c), rgb(0x2c6672), knit * 0.7 + rng() * 0.3);
+      const base = mix(rgb(0x3d818c), rgb(0x2c6672), knit * 0.7 + rng() * 0.3);
+      if (py === 0) return mix(base, rgb(0x53a2ae), 0.5);   // shoulder highlight
+      return base;
     }
-    if (py === 7) return rgb(0xb98563); // cuff edge shading
-    // skin with subtle knuckle speckle
-    const skin = speckle(rgb(0xc98e6b), rgb(0xb97f5e), rgb(0xd9a07c), 0.55);
+    if (py === 5) return rgb(0x1f4a52);                      // dark cuff seam
+    if (py === 6) return rgb(0xb98563);                      // cuff edge skin shadow
+    // skin: warm gradient (wrist slightly darker), light hair speckle
+    const grad = 1 - (py - 7) / 10 * 0.18;
+    const skin = speckle(
+      mix(rgb(0xc98e6b), rgb(0xd9a07c), grad * 0.8),
+      rgb(0xb97f5e), rgb(0xe0ab88), 0.5);
+    if (rng() < 0.05) return mix(skin, rgb(0x8f5f42), 0.6);  // arm hair
     return skin;
+  });
+
+  // First-person FIST: knuckle ridge across the top, four finger creases
+  // down the face, thumb hint on the side, palm shade at the bottom.
+  paint(T.ARM_FIST, (px, py) => {
+    const knuckle = Math.abs(((px + 1) % 4) - 1.5);           // 4 knuckle bumps
+    if (py <= 3) {
+      // knuckles: rounded bumps with highlight
+      const bump = 1 - knuckle / 1.5;
+      let c = mix(rgb(0xc98e6b), rgb(0xe7b491), bump * 0.7);
+      if (py === 1 && bump > 0.55) c = mix(c, rgb(0xf2c9a6), 0.6);
+      return c;
+    }
+    if (py === 4) return rgb(0x9c6b4d);                      // knuckle crease
+    if (py <= 10) {
+      // fingers: vertical creases between four fingers
+      const inCrease = knuckle < 0.45 && py > 5;
+      let c = mix(rgb(0xcf9772), rgb(0xdba681), (py - 5) / 6 * 0.5);
+      if (inCrease) c = mix(c, rgb(0x9c6b4d), 0.55);
+      if (px < 3 && py >= 7) c = mix(c, rgb(0xb17e5b), 0.45); // thumb wrap
+      return c;
+    }
+    if (py === 11) return rgb(0xa87453);                     // finger bottom seam
+    // palm side / heel of hand: slightly pinker, softer
+    const palm = speckle(rgb(0xd5a07c), rgb(0xc4906c), rgb(0xe4b18c), 0.5);
+    return palm;
   });
 
   // Water block icon / held cube: layered blue bands with light crests
@@ -1138,13 +1243,135 @@ const iconCache = new Map();
 function iconFor(atlasCanvas, blockId) {
   if (iconCache.has(blockId)) return iconCache.get(blockId);
   let url;
-  if (PLANT_IDS.has(blockId)) {
+  if (ICON_URLS && ICON_URLS.has(blockId)) {
+    url = ICON_URLS.get(blockId);            // baked 3D render (preferred)
+  } else if (PLANT_IDS.has(blockId)) {
     url = tileToDataURL(atlasCanvas, TILES[blockId][0], 4);
   } else {
-    url = blockIconDataURL(atlasCanvas, TILES[blockId], 64);
+    url = blockIconDataURL(atlasCanvas, TILES[blockId], 64);   // 2D fallback
   }
   iconCache.set(blockId, url);
   return url;
+}
+
+// ----------------------------------------------------------------------------
+// TRUE 3D inventory icons — every block is rendered once by an offscreen
+// WebGL renderer using the game's own atlas + face shading, exactly like the
+// held-block view model, then snapshotted to a data URL. Falls back to the
+// 2D isometric sketch above if a second GL context cannot be created.
+// ----------------------------------------------------------------------------
+let ICON_URLS = null;
+
+/** Cube (or cross-sprite) geometry for `blockId` with atlas UVs and baked
+ *  directional face shading — shared by the held-block view model and the
+ *  3D inventory icon baker so both look identical. */
+function blockGeometryFor(blockId) {
+  const tiles = TILES[blockId];
+  if (!tiles) return null;
+  const g = new THREE.BufferGeometry();
+  const pos = [], uv = [], col = [], idx = [];
+  const N = ATLAS_TILES, INSET = 0.25 / 16;
+  const tileUV = (tile, u, v) => {
+    const c = tile % N, r = Math.floor(tile / N);
+    return [(c + INSET + u * (1 - 2 * INSET)) / N, (N - r - 1 + INSET + v * (1 - 2 * INSET)) / N];
+  };
+  const quv = [[0, 0], [1, 0], [1, 1], [0, 1]];
+  const faces = [
+    { tileIdx: 0, shade: 0.62, c: [[1, 0, 1], [1, 0, 0], [1, 1, 0], [1, 1, 1]] },
+    { tileIdx: 1, shade: 0.62, c: [[0, 0, 0], [0, 0, 1], [0, 1, 1], [0, 1, 0]] },
+    { tileIdx: 2, shade: 1.0, c: [[0, 1, 1], [1, 1, 1], [1, 1, 0], [0, 1, 0]] },
+    { tileIdx: 3, shade: 0.5, c: [[0, 0, 0], [1, 0, 0], [1, 0, 1], [0, 0, 1]] },
+    { tileIdx: 4, shade: 0.8, c: [[0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]] },
+    { tileIdx: 5, shade: 0.8, c: [[1, 0, 0], [0, 0, 0], [0, 1, 0], [1, 1, 0]] },
+  ];
+  if (PLANT_IDS.has(blockId)) {
+    const lo = 0.15, hi = 0.85;
+    const quads = [
+      [[lo, 0, lo], [hi, 0, hi], [hi, 1, hi], [lo, 1, lo]],
+      [[lo, 0, hi], [hi, 0, lo], [hi, 1, lo], [lo, 1, hi]],
+    ];
+    for (const q of quads) {
+      const base = pos.length / 3;
+      for (let k = 0; k < 4; k++) {
+        pos.push(q[k][0] - 0.5, q[k][1] - 0.5, q[k][2] - 0.5);
+        const t = tileUV(tiles[0], quv[k][0], quv[k][1]);
+        uv.push(t[0], t[1]);
+        col.push(235, 235, 235);
+      }
+      idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    }
+  } else {
+    for (const f of faces) {
+      const base = pos.length / 3;
+      for (let k = 0; k < 4; k++) {
+        const v = f.c[k];
+        pos.push(v[0] - 0.5, v[1] - 0.5, v[2] - 0.5);
+        const t = tileUV(tiles[f.tileIdx], quv[k][0], quv[k][1]);
+        uv.push(t[0], t[1]);
+        const c = f.shade * 255;
+        col.push(c, c, c);
+      }
+      idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    }
+  }
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+  g.setAttribute('color', new THREE.BufferAttribute(new Uint8Array(col), 3, true));
+  g.setIndex(idx);
+  return g;
+}
+
+function initIconBaker(atlasTexture) {
+  const SIZE = 128;
+  const urls = new Map();
+  let renderer = null;
+  try {
+    const cnv = document.createElement('canvas');
+    cnv.width = SIZE; cnv.height = SIZE;
+    renderer = new THREE.WebGLRenderer({ canvas: cnv, antialias: true, alpha: true, preserveDrawingBuffer: true });
+  } catch (e) {
+    ICON_URLS = null;
+    return;
+  }
+  renderer.setPixelRatio(1);
+  renderer.setSize(SIZE, SIZE, false);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.setClearColor(0x000000, 0);
+
+  const scene = new THREE.Scene();
+  // classic MC item angle: looking down onto the top + two sides
+  const cam = new THREE.OrthographicCamera(-0.80, 0.80, 0.80, -0.80, 0.1, 20);
+  cam.position.set(1.35, 1.05, 1.55);
+  cam.lookAt(0, -0.04, 0);
+  const plantCam = new THREE.OrthographicCamera(-0.60, 0.60, 0.60, -0.60, 0.1, 20);
+  plantCam.position.set(0.0, 0.32, 2.0);
+  plantCam.lookAt(0, 0, 0);
+
+  const solidMat = new THREE.MeshBasicMaterial({ map: atlasTexture, vertexColors: true });
+  const cutoutMat = new THREE.MeshBasicMaterial({ map: atlasTexture, vertexColors: true, alphaTest: 0.4, side: THREE.DoubleSide });
+  const waterMat = new THREE.MeshBasicMaterial({ map: atlasTexture, vertexColors: true, transparent: true, opacity: 0.86 });
+
+  const ids = Object.keys(TILES).map(Number);
+  for (const id of ids) {
+    let mat = solidMat;
+    if (id === B.GLASS || PLANT_IDS.has(id) || id === B.LEAVES) mat = cutoutMat;
+    else if (id === B.WATER) mat = waterMat;
+    const geo = blockGeometryFor(id);
+    if (!geo) continue;
+    const mesh = new THREE.Mesh(geo, mat);
+    scene.add(mesh);
+    renderer.render(scene, PLANT_IDS.has(id) ? plantCam : cam);
+    scene.remove(mesh);
+    try {
+      urls.set(id, renderer.domElement.toDataURL('image/png'));
+    } catch (e) { /* skip this one; iconFor falls back */ }
+    geo.dispose();
+  }
+  solidMat.dispose();
+  cutoutMat.dispose();
+  waterMat.dispose();
+  renderer.dispose();
+  ICON_URLS = urls;
 }
 
 // ============================================================================
@@ -1365,12 +1592,14 @@ const WATER_VERT = `
 
   attribute float depth;
   attribute float level;
+  attribute vec3 flow;   // xy = current direction (unnormalised), z = speed
 
   varying vec3 vWorldPos;
   varying vec3 vWaveNormal;
   varying float vDepth;
   varying float vWaveH;
   varying float vLevel;
+  varying vec3 vFlow;
 
   void main() {
     vec4 wp = modelMatrix * vec4(position, 1.0);
@@ -1380,7 +1609,16 @@ const WATER_VERT = `
     // carry 5cm swells, and full-size waves would poke through the terrain.
     float flowAmp = uWaveAmp * clamp(level / 8.0 * 1.15, 0.14, 1.0);
 
-    vec2 p = wp.xz;
+    // the surface current: wave phases ride downstream, so ripples visibly
+    // travel with the flow instead of sliding across it.
+    float spd = flow.z;
+    bool falling = spd >= 1.5;
+    vec2 fdir = (falling || spd < 0.001) ? vec2(0.0)
+      : normalize(flow.xy + vec2(1e-5));
+    vec2 p = wp.xz + fdir * spd * t * 1.35;
+    // churned falling water flattens its swells (the energy is vertical)
+    if (falling) flowAmp *= 0.45;
+
     float h = 0.0;
     float dhx = 0.0;
     float dhz = 0.0;
@@ -1416,6 +1654,7 @@ const WATER_VERT = `
     vWorldPos = wp.xyz;
     vDepth = depth;
     vLevel = level;
+    vFlow = flow;
 
     gl_Position = projectionMatrix * viewMatrix * wp;
   }
@@ -1444,6 +1683,7 @@ const WATER_FRAG = `
   varying float vDepth;
   varying float vWaveH;
   varying float vLevel;
+  varying vec3 vFlow;
 
   float hash12(vec2 p) {
     vec3 p3 = fract(vec3(p.xyx) * 0.1031);
@@ -1472,14 +1712,22 @@ const WATER_FRAG = `
     bool front = gl_FrontFacing;
     vec3 N = normalize(vWaveNormal);
 
+    // ---- unpack the flow field ------------------------------------------
+    float spd = clamp(vFlow.z, 0.0, 2.0);
+    bool falling = vFlow.z >= 1.5;
+    vec2 fdir = (falling || spd < 0.001) ? vec2(0.0, 0.0)
+      : normalize(vFlow.xy + vec2(1e-5, 1e-5));
+    // water travelling with the current: ripple detail advects downstream
+    vec2 adv = fdir * spd * uTime * 1.35;
+
     if (uWaterDetail > 0.5) {
-      vec2 p = vWorldPos.xz;
+      vec2 p = vWorldPos.xz + adv;
       float t = uTime;
       float e = 0.32;
       float h0 = ripple(p, t);
       float hx = ripple(p + vec2(e, 0.0), t) - h0;
       float hz = ripple(p + vec2(0.0, e), t) - h0;
-      float str = 0.9 * uWaterDetail;
+      float str = 0.9 * uWaterDetail * (0.55 + 0.45 * clamp(spd, 0.0, 1.0));
       N = normalize(N + vec3(-hx, 0.0, -hz) * str);
     }
     if (!front) N = -N;
@@ -1513,16 +1761,41 @@ const WATER_FRAG = `
       float band = smoothstep(0.48, 0.78, fn);
       float edge = 1.0 - smoothstep(0.55, 1.35, vDepth);
       foam = clamp(shore * band + edge * 0.85, 0.0, 1.0);
-      // flowing water reads as rapids: streaky white water sliding downstream
-      float flow = clamp(1.0 - vLevel / 8.0, 0.0, 1.0);
-      if (flow > 0.01) {
-        float streak = vnoise(vWorldPos.xz * 3.1 - vec2(uTime * 1.1, uTime * 0.2));
-        float streak2 = vnoise(vWorldPos.xz * 5.7 + vec2(uTime * 1.6, uTime * 0.4));
-        foam = clamp(foam + flow * (0.30 + smoothstep(0.55, 0.85, streak) * 0.55 + streak2 * 0.18), 0.0, 0.92);
+
+      if (falling) {
+        // waterfall churn: vertical streaks of white water racing down the
+        // column, bright at the lip and collar where it lands.  Two scales:
+        // fine streaks for close-up, plus big slow white tongues that keep
+        // the fall readable from far away (fine noise alone aliases to mush)
+        float sideFace = 1.0 - clamp(abs(N.y) * 2.0, 0.0, 1.0);
+        float vs = vnoise(vec2(vWorldPos.x * 3.4 + vWorldPos.z * 2.8,
+                                vWorldPos.y * 2.1 - uTime * 3.1));
+        float vs2 = vnoise(vec2(vWorldPos.x * 6.1 + vWorldPos.z * 4.7,
+                                 vWorldPos.y * 3.7 - uTime * 4.6) + 9.1);
+        float tongue = vnoise(vec2((vWorldPos.x + vWorldPos.z * 0.6) * 0.85,
+                                    vWorldPos.y * 0.5 - uTime * 1.5) + 31.7);
+        float churn = 0.55 + smoothstep(0.38, 0.70, vs) * 0.34
+                    + smoothstep(0.55, 0.85, vs2) * 0.18
+                    + smoothstep(0.42, 0.70, tongue) * 0.45;
+        foam = clamp(foam + churn * (0.5 + 0.5 * sideFace), 0.0, 0.97);
+      } else if (spd > 0.01) {
+        // a real current: elongated streaks aligned WITH the flow, sliding
+        // downstream at the water's own pace
+        vec2 fp = vWorldPos.xz - adv;
+        float along = dot(fp, fdir);
+        float across = dot(fp, vec2(-fdir.y, fdir.x));
+        float streak = vnoise(vec2(along * 0.55 - uTime * (0.6 + spd * 1.7),
+                                    across * 2.6));
+        float streak2 = vnoise(vec2(along * 1.15 - uTime * (1.0 + spd * 2.3),
+                                     across * 4.4) + 17.3);
+        float lvl = clamp(1.0 - vLevel / 8.0, 0.0, 1.0);
+        float cur = max(spd, lvl * 0.55);
+        foam = clamp(foam + cur * (0.22 + smoothstep(0.52, 0.84, streak) * 0.6
+                                   + streak2 * 0.20), 0.0, 0.92);
       }
     }
 
-    float glint = smoothstep(0.80, 0.96, ripple(vWorldPos.xz * 2.6, uTime * 1.35));
+    float glint = smoothstep(0.80, 0.96, ripple((vWorldPos.xz + adv) * 2.6, uTime * 1.35));
     float faceMix = front ? 1.0 : 0.35;
 
     vec3 col;
@@ -1533,9 +1806,11 @@ const WATER_FRAG = `
       col += uWaterShallow * sss * 0.55 * clamp(uSunIntensity, 0.0, 1.0);
       col += uSunColor * spec * spec * 0.5;
       col += uSunColor * glint * 0.22 * clamp(uSunIntensity, 0.0, 1.0) * faceMix;
-      col = mix(col, uFoamColor, foam * 0.8);
+      col = mix(col, uFoamColor, foam * 0.9);
       alpha = mix(0.66, 0.95, depthT);
       alpha = max(alpha, foam * 0.9);
+      // churned falls read dense, not glassy: near-opaque white water
+      if (falling) { alpha = max(alpha, 0.86); col = mix(col, uFoamColor, 0.35); }
     } else {
       col = mix(body * 1.5 + uWaterShallow * 0.25, uHorizonColor, 0.25);
       col += uSunColor * spec * 1.4 * clamp(uSunIntensity, 0.0, 1.0);
@@ -1865,7 +2140,9 @@ class FluidSim {
     this.queued = new Set();    // "x,y,z" dedupe
     this.tickAcc = 0;
     this.TICK = 0.2;
-    this.MAX_CELLS = 64;
+    this.MAX_CELLS = 96;
+    this.MAX_QUEUE = 6144;      // runaway-flood safety valve
+    this.busyTicks = 0;
     this.onWaterfall = null;    // (x,y,z) fired when water pours into air
   }
 
@@ -1875,6 +2152,12 @@ class FluidSim {
     if (this.queued.has(k)) return;
     this.queued.add(k);
     this.queue.push(x, y, z);
+    // safety valve: a truly runaway flood (or a pathological queue) must
+    // never grow without bound — drop the OLDEST cells first
+    while (this.queue.length > this.MAX_QUEUE * 3) {
+      const ox = this.queue.shift(), oy = this.queue.shift(), oz = this.queue.shift();
+      this.queued.delete(ox + ',' + oy + ',' + oz);
+    }
   }
 
   scheduleNeighbours(x, y, z) {
@@ -1894,7 +2177,8 @@ class FluidSim {
     this.tickAcc += dt;
     if (this.tickAcc < this.TICK) return;
     this.tickAcc -= this.TICK;
-    if (this.queue.length === 0) return;
+    if (this.queue.length === 0) { this.busyTicks = 0; return; }
+    this.busyTicks++;
     let n = Math.min(this.MAX_CELLS, this.queue.length / 3);
     while (n-- > 0 && this.queue.length >= 3) {
       const x = this.queue.shift(), y = this.queue.shift(), z = this.queue.shift();
@@ -1921,8 +2205,12 @@ class FluidSim {
         this.scheduleNeighbours(x, y, z);
         if (wanted <= 0) return;       // dried: nothing further to spread
       }
-      // infinite pool: flanked by two sources -> become a source
-      if (this._sourceNeighbours(x, y, z) >= 2) {
+      // infinite pool: a flowing cell flanked by two sources AND resting on
+      // solid ground (or a source) becomes a source itself — the Minecraft
+      // rule.  The "supported below" check is what keeps sources from
+      // crystallising in mid-air over drops, which used to seed permanent
+      // floating waterfalls that never stopped pouring.
+      if (this._sourceNeighbours(x, y, z) >= 2 && this._sourceSupported(x, y, z)) {
         w.setVoxelEdited(x, y, z, B.WATER);
         this.scheduleNeighbours(x, y, z);
       }
@@ -1940,13 +2228,28 @@ class FluidSim {
     }
   }
 
+  /** True when the cell stands on a solid block or a water source. */
+  _sourceSupported(x, y, z) {
+    const w = this.world;
+    if (y <= 0) return true;               // bedrock floor
+    const below = w.getVoxel(x, y - 1, z);
+    return below === B.WATER ||
+      (below !== B.AIR && !isWaterId(below) && !PLANT_IDS.has(below));
+  }
+
   /** Level this cell should settle at from its inflow, or 0 for "dry". */
   _inflowLevel(x, y, z) {
     const w = this.world;
     if (isWaterId(w.getVoxel(x, y + 1, z))) return 7;   // under a column
     const belowMe = w.getVoxel(x, y - 1, z);
-    // bedrock level (y=0) has no void below — treat it as solid ground
-    const overDrop = y > 0 && (belowMe === B.AIR || PLANT_IDS.has(belowMe) || isWaterId(belowMe));
+    // Escalating to a full falling column happens over a real void (air/
+    // plants) or over a FALLING column below (the lip of a waterfall stays
+    // full).  But over a SOURCE block (a lake/sea surface) the current must
+    // DECAY one level per block like Minecraft — otherwise a splash landing
+    // on a lake regenerates full-height water over every cell and crawls
+    // across the entire sea forever.
+    const overDrop = y > 0 && (belowMe === B.AIR || PLANT_IDS.has(belowMe) ||
+      (isWaterId(belowMe) && belowMe !== B.WATER));
     let max = 0;
     const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
     for (const [dx, dz] of dirs) {
@@ -1956,14 +2259,16 @@ class FluidSim {
       // Only water RESTING on something feeds sideways: a solid floor or a
       // source body. Falling columns pour straight down — which is exactly
       // what keeps waterfalls narrow, like Minecraft.
-      const belowN = w.getVoxel(nx, y - 1, nz);
+      // (y=0 always sits on bedrock, so neighbours there are resting —
+      // without this, water on the world floor oscillates dry/wet forever.)
+      const belowN = y > 0 ? w.getVoxel(nx, y - 1, nz) : B.STONE;
       const resting = belowN === B.WATER ||
         (belowN !== B.AIR && !isWaterId(belowN) && !PLANT_IDS.has(belowN));
       if (!resting) continue;
       max = Math.max(max, waterLevelOf(n));
     }
-    // Over a drop (air or water below), any inflow turns into a full falling
-    // column — a stream reaching a cliff edge pours off it, like MC.
+    // Over a real drop, any inflow turns into a full falling column — a
+    // stream reaching a cliff edge pours off it, like MC.
     if (overDrop) return max >= 1 ? 7 : 0;
     return max - 1;
   }
@@ -2021,6 +2326,7 @@ class World {
     this.workerBusy = [];
     this.genQueue = [];
     this.meshQueue = [];
+    this.meshQueueDirty = true;
     this.renderDistance = 5;
     this.center = { cx: 0, cz: 0 };
     this.disposed = false;
@@ -2099,13 +2405,26 @@ class World {
     if (!m || !c.voxels) return;
     for (const [idx, id] of m) {
       c.voxels[idx] = id;
-      // let the fluid sim re-settle around restored edits (dug channels,
-      // saved floods, removed sources)
+    }
+    // Re-settle the fluid sim around restored edits — but ONLY around cells
+    // that are water or touch water.  Scheduling every historical edit (most
+    // of them plain digs far from any sea) used to re-flood the queue every
+    // time a chunk streamed back in, so water visibly "kept flowing forever".
+    for (const [idx, id] of m) {
       const y = idx % WORLD_H;
       const rest = (idx - y) / WORLD_H;
       const lz = rest % CHUNK_Z;
       const lx = (rest - lz) / CHUNK_Z;
-      this.fluid.scheduleNeighbours(c.cx * CHUNK_X + lx, y, c.cz * CHUNK_Z + lz);
+      const wx = c.cx * CHUNK_X + lx, wz = c.cz * CHUNK_Z + lz;
+      if (isWaterId(id)) {
+        this.fluid.schedule(wx, y, wz);
+        continue;
+      }
+      let touches = false;
+      for (const [dx, dy, dz] of NEIGH6) {
+        if (isWaterId(this.getVoxel(wx + dx, y + dy, wz + dz))) { touches = true; break; }
+      }
+      if (touches) this.fluid.schedule(wx, y, wz);
     }
   }
 
@@ -2195,6 +2514,14 @@ class World {
     }
     for (const [k, c] of this.chunks) {
       const d = Math.max(Math.abs(c.cx - cx), Math.abs(c.cz - cz));
+      // huge render distances keep a wide ring of generated (data-only)
+      // chunks: free their GPU meshes once they fall out of view so memory
+      // stays flat while walking around
+      if (d > rd + 1 && c.meshes) {
+        this._clearMeshObjects(c);
+        c.meshes = null;
+        c.meshedRev = -1;
+      }
       if (d > genR + 2 && !c.disposeQueued) {
         c.disposeQueued = true;
         this._disposeChunk(c);
@@ -2202,6 +2529,7 @@ class World {
       }
     }
     this.genQueue.sort((a, b) => a.dist - b.dist);
+    this.meshQueueDirty = true;
     this._pumpWorkers();
   }
 
@@ -2215,7 +2543,12 @@ class World {
       this.workerBusy[w] = true;
       this.workers[w].postMessage({ t: 'gen', cx: job.cx, cz: job.cz, seed: this.seed, rev: c.rev });
     }
-    this._rebuildMeshQueue();
+    // rebuild the O(chunks) mesh queue only when something actually changed
+    // (new voxels, edits, streaming moved) — not on every worker message
+    if (this.meshQueueDirty) {
+      this._rebuildMeshQueue();
+      this.meshQueueDirty = false;
+    }
     while (this.meshQueue.length > 0) {
       const w = this._freeWorker();
       if (w < 0) return;
@@ -2259,6 +2592,7 @@ class World {
     c.meshedRev = -1;
     // edits must be visible immediately — mesh synchronously on the main
     // thread would hitch; instead prioritize by pumping right away
+    this.meshQueueDirty = true;
     this._pumpWorkers();
   }
 
@@ -2303,6 +2637,7 @@ class World {
       if (c && !c.voxels) {
         c.voxels = new Uint8Array(msg.voxels);
         this._applyEditsToChunk(c); // restore player edits before meshing
+        this.meshQueueDirty = true;
       }
       this._pumpWorkers();
       return;
@@ -2314,9 +2649,13 @@ class World {
     }
   }
 
-  processUploads(budget = 2) {
-    let applied = 0;
-    while (applied < budget && this.pendingResults.length > 0) {
+  processUploads(budgetMs = 3) {
+    // time-budgeted upload: keeps frame pacing rock steady while still
+    // draining a big backlog (huge render distances) as fast as the frame
+    // allows
+    const t0 = performance.now();
+    while (this.pendingResults.length > 0) {
+      if (performance.now() - t0 > budgetMs) break;
       const r = this.pendingResults.shift();
       const c = this.chunks.get(this.key(r.cx, r.cz));
       if (c && r.rev === c.rev) {
@@ -2324,7 +2663,6 @@ class World {
         this._applyMeshes(c);
         this.onChunkMeshed && this.onChunkMeshed({ cx: r.cx, cz: r.cz });
       }
-      applied++;
     }
     this._pumpWorkers();
   }
@@ -2367,6 +2705,7 @@ class World {
       g.setAttribute('uv', new THREE.BufferAttribute(m.w.u, 2));
       g.setAttribute('depth', new THREE.BufferAttribute(m.w.d, 1));
       g.setAttribute('level', new THREE.BufferAttribute(m.w.l, 1));
+      g.setAttribute('flow', new THREE.BufferAttribute(m.w.fl, 3));
       g.setIndex(new THREE.BufferAttribute(m.w.i, 1));
       g.computeBoundingSphere();
       const mesh = new THREE.Mesh(g, this.materials.water);
@@ -3120,7 +3459,7 @@ function loadSettings() {
     if (!s || typeof s !== 'object') return null;
     return {
       quality: ['low', 'medium', 'high'].includes(s.quality) ? s.quality : 'medium',
-      renderDistance: Math.max(3, Math.min(10, s.renderDistance || 6)),
+      renderDistance: Math.max(4, Math.min(20, s.renderDistance || 8)),
       fov: Math.max(60, Math.min(100, s.fov || 75)),
       sensitivity: Math.max(0.2, Math.min(2, s.sensitivity || 1)),
       volume: Math.max(0, Math.min(1, s.volume ?? 0.8)),
@@ -3279,6 +3618,8 @@ class Game {
     this.shared.uWaterDetail.value = preset.waterDetail;
     this.waterMat.uniforms.uWaveAmp.value = 0.55 + preset.waterDetail * 0.8;
     this.crackTex = buildCrackTextures();
+    // bake true-3D inventory icons from the freshly built atlas
+    try { initIconBaker(atlas.texture); } catch (e) { ICON_URLS = null; }
 
     // favicon from the grass side tile
     try {
@@ -3358,9 +3699,9 @@ class Game {
     this.armMesh.frustumCulled = false;
     this.armMesh.renderOrder = 2;
     this.heldGroup.add(this.armMesh);
-    this.armMesh.position.set(0.30, -0.32, 0.28);
-    this.armMesh.rotation.set(0.55, 0.65, -0.22);
-    this.blockGroup.position.set(0.03, 0.15, -0.30);
+    this.armMesh.position.set(0.26, -0.30, 0.38);
+    this.armMesh.rotation.set(0.50, 0.60, -0.20);
+    this.blockGroup.position.set(0.0, 0.16, -0.56);
     this.heldGroup.position.set(0.58, -0.52, -0.86);
     this.heldGroup.rotation.set(0.16, -0.62, 0.06);
     this.swingT = 0;
@@ -4058,7 +4399,10 @@ class Game {
   // --------------------------------------------------------------------------
   // first-person view model: arm + held block with dynamic hand lighting
   // --------------------------------------------------------------------------
-  /** Long skin/sleeve box: fist at -Z, shoulder at +Z, atlas-UV'd + shaded. */
+  /** Chunky Minecraft-style arm: a forearm box (sleeve + skin, wrist at -Z)
+   *  plus a wider FIST box with knuckles / finger creases at the -Z end.
+   *  Both are atlas-UV'd and carry per-face directional shading, so the arm
+   *  reads as a solid blocky limb instead of a skinny stick. */
   _buildArmGeometry() {
     const g = new THREE.BufferGeometry();
     const pos = [], uv = [], col = [], idx = [];
@@ -4067,11 +4411,10 @@ class Game {
       const c = tile % N, r = Math.floor(tile / N);
       return [(c + INSET + u * (1 - 2 * INSET)) / N, (N - r - 1 + INSET + v * (1 - 2 * INSET)) / N];
     };
-    const W = 0.24, L = 0.80;
-    const h = W / 2;
-    // quad(): corners map to (u0,v0) (u1,v0) (u1,v1) (u0,v1)
-    const quad = (corners, tile, u0, u1, v0, v1, shade) => {
+    // quad(): corners map to (u0,v0) (u1,v0) (u1,v1) (u0,v1) of the uv rect
+    const quad = (corners, tile, rect, shade) => {
       const base = pos.length / 3;
+      const [u0, v0, u1, v1] = rect;
       const quv = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]];
       for (let k = 0; k < 4; k++) {
         const c = corners[k];
@@ -4083,17 +4426,29 @@ class Game {
       }
       idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
     };
-    // Long faces: the first two corners are the FIST end (z=-L, tile bottom
-    // = skin) and the last two the SHOULDER end (z=0, tile top = sleeve), so
-    // the tile's v axis runs along the arm exactly.
-    quad([[-h, -h, -L], [-h, h, -L], [-h, h, 0], [-h, -h, 0]], T.ARM_SKIN, 0, 1, 0, 1, 0.74); // -X
-    quad([[h, -h, -L], [h, h, -L], [h, h, 0], [h, -h, 0]], T.ARM_SKIN, 0, 1, 0, 1, 0.74);   // +X
-    quad([[-h, h, -L], [h, h, -L], [h, h, 0], [-h, h, 0]], T.ARM_SKIN, 0, 1, 0, 1, 1.0);    // +Y top
-    quad([[-h, -h, -L], [h, -h, -L], [h, -h, 0], [-h, -h, 0]], T.ARM_SKIN, 0, 1, 0, 1, 0.55); // -Y bottom
-    // fist cap (-Z): sample only the skin band of the tile
-    quad([[-h, -h, -L], [h, -h, -L], [h, h, -L], [-h, h, -L]], T.ARM_SKIN, 0.1, 0.9, 0.06, 0.38, 0.92);
+
+    // ---- forearm: x ±0.145, y ±0.125, z -0.28 (wrist) .. +0.36 (shoulder)
+    const fx = 0.145, fy = 0.125, fzW = -0.28, fzS = 0.36;
+    // long faces: v runs wrist (v0) -> shoulder (v1); u runs bottom -> top
+    quad([[-fx, -fy, fzW], [-fx, fy, fzW], [-fx, fy, fzS], [-fx, -fy, fzS]], T.ARM_SKIN, [0.05, 0, 0.95, 1], 0.72); // -X
+    quad([[fx, -fy, fzW], [fx, fy, fzW], [fx, fy, fzS], [fx, -fy, fzS]], T.ARM_SKIN, [0.05, 0, 0.95, 1], 0.72);   // +X
+    quad([[-fx, fy, fzW], [fx, fy, fzW], [fx, fy, fzS], [-fx, fy, fzS]], T.ARM_SKIN, [0.05, 0, 0.95, 1], 1.0);    // +Y top
+    quad([[-fx, -fy, fzW], [fx, -fy, fzW], [fx, -fy, fzS], [-fx, -fy, fzS]], T.ARM_SKIN, [0.05, 0, 0.95, 1], 0.55); // -Y bottom
     // shoulder cap (+Z): sleeve band
-    quad([[-h, -h, 0], [h, -h, 0], [h, h, 0], [-h, h, 0]], T.ARM_SKIN, 0.1, 0.9, 0.62, 0.94, 0.6);
+    quad([[-fx, -fy, fzS], [fx, -fy, fzS], [fx, fy, fzS], [-fx, fy, fzS]], T.ARM_SKIN, [0.15, 0.86, 0.85, 1.0], 0.6);
+
+    // ---- fist: wider than the forearm, overlapping the wrist joint
+    const kx = 0.19, ky = 0.165, kzB = -0.64, kzF = -0.24;
+    // front cap (-Z): knuckles + fingers — the tile's main event
+    quad([[kx, -ky, kzB], [-kx, -ky, kzB], [-kx, ky, kzB], [kx, ky, kzB]], T.ARM_FIST, [0.08, 0.04, 0.92, 0.96], 0.9);
+    // sides: finger wrap
+    quad([[-kx, -ky, kzF], [-kx, -ky, kzB], [-kx, ky, kzB], [-kx, ky, kzF]], T.ARM_FIST, [0.08, 0.18, 0.92, 0.78], 0.62); // -X
+    quad([[kx, -ky, kzF], [kx, -ky, kzB], [kx, ky, kzB], [kx, ky, kzF]], T.ARM_FIST, [0.08, 0.18, 0.92, 0.78], 0.62);   // +X
+    // top: knuckle ridge band
+    quad([[-kx, ky, kzB], [kx, ky, kzB], [kx, ky, kzF], [-kx, ky, kzF]], T.ARM_FIST, [0.08, 0.76, 0.92, 1.0], 1.0);    // +Y
+    // bottom: heel of the palm
+    quad([[-kx, -ky, kzF], [kx, -ky, kzF], [kx, -ky, kzB], [-kx, -ky, kzB]], T.ARM_FIST, [0.15, 0.02, 0.85, 0.3], 0.5); // -Y
+
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
     g.setAttribute('color', new THREE.BufferAttribute(new Uint8Array(col), 3, true));
@@ -4102,59 +4457,7 @@ class Game {
   }
 
   _heldGeometryFor(blockId) {
-    const g = new THREE.BufferGeometry();
-    const pos = [], uv = [], col = [], idx = [];
-    const N = ATLAS_TILES, INSET = 0.25 / 16;
-    const tileUV = (tile, u, v) => {
-      const c = tile % N, r = Math.floor(tile / N);
-      return [(c + INSET + u * (1 - 2 * INSET)) / N, (N - r - 1 + INSET + v * (1 - 2 * INSET)) / N];
-    };
-    const quv = [[0, 0], [1, 0], [1, 1], [0, 1]];
-    const faces = [
-      { tileIdx: 0, shade: 0.62, c: [[1, 0, 1], [1, 0, 0], [1, 1, 0], [1, 1, 1]] },
-      { tileIdx: 1, shade: 0.62, c: [[0, 0, 0], [0, 0, 1], [0, 1, 1], [0, 1, 0]] },
-      { tileIdx: 2, shade: 1.0, c: [[0, 1, 1], [1, 1, 1], [1, 1, 0], [0, 1, 0]] },
-      { tileIdx: 3, shade: 0.5, c: [[0, 0, 0], [1, 0, 0], [1, 0, 1], [0, 0, 1]] },
-      { tileIdx: 4, shade: 0.8, c: [[0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]] },
-      { tileIdx: 5, shade: 0.8, c: [[1, 0, 0], [0, 0, 0], [0, 1, 0], [1, 1, 0]] },
-    ];
-    const tiles = TILES[blockId];
-    if (PLANT_IDS.has(blockId)) {
-      // cross-sprite
-      const lo = 0.15, hi = 0.85;
-      const quads = [
-        [[lo, 0, lo], [hi, 0, hi], [hi, 1, hi], [lo, 1, lo]],
-        [[lo, 0, hi], [hi, 0, lo], [hi, 1, lo], [lo, 1, hi]],
-      ];
-      for (const q of quads) {
-        const base = pos.length / 3;
-        for (let k = 0; k < 4; k++) {
-          pos.push(q[k][0] - 0.5, q[k][1] - 0.5, q[k][2] - 0.5);
-          const t = tileUV(tiles[0], quv[k][0], quv[k][1]);
-          uv.push(t[0], t[1]);
-          col.push(235, 235, 235);
-        }
-        idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
-      }
-    } else {
-      for (const f of faces) {
-        const base = pos.length / 3;
-        for (let k = 0; k < 4; k++) {
-          const v = f.c[k];
-          pos.push(v[0] - 0.5, v[1] - 0.5, v[2] - 0.5);
-          const t = tileUV(tiles[f.tileIdx], quv[k][0], quv[k][1]);
-          uv.push(t[0], t[1]);
-          const c = f.shade * 255;
-          col.push(c, c, c);
-        }
-        idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
-      }
-    }
-    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
-    g.setAttribute('color', new THREE.BufferAttribute(new Uint8Array(col), 3, true));
-    g.setIndex(idx);
-    return g;
+    return blockGeometryFor(blockId);
   }
 
   _buildHeld() {
@@ -4246,9 +4549,9 @@ class Game {
     );
 
     // the arm itself: shoulder enters from the bottom-right off-screen,
-    // fist reaching up toward centre — the classic Minecraft arm pose
-    this.armMesh.position.set(0.30 + this.swayX * 0.5, -0.32 - s * 0.10, 0.28 + s * 0.06);
-    this.armMesh.rotation.set(0.55 - s * 0.55 + this.swayY * 0.8, 0.65 + this.swayX * 0.9, -0.22 - s * 0.12);
+    // chunky fist reaching up toward centre — the classic Minecraft arm pose
+    this.armMesh.position.set(0.26 + this.swayX * 0.5, -0.30 - s * 0.12, 0.38 + s * 0.08);
+    this.armMesh.rotation.set(0.50 - s * 0.60 + this.swayY * 0.8, 0.60 + this.swayX * 0.9 + s * 0.30, -0.20 - s * 0.14);
     this.armMesh.visible = true;
 
     this._updateHandLight(dt);
@@ -4296,7 +4599,12 @@ class Game {
   _updateStreamingCenter() {
     const cx = Math.floor(this.player.position.x / CHUNK_X);
     const cz = Math.floor(this.player.position.z / CHUNK_Z);
-    this.world.updateStreaming(cx, cz);
+    // only re-run the (chunk-count-proportional) streaming scan when the
+    // player actually crosses into a new chunk — huge render distances make
+    // a per-frame scan genuinely expensive
+    if (cx !== this.world.center.cx || cz !== this.world.center.cz) {
+      this.world.updateStreaming(cx, cz);
+    }
   }
 
   _facingString() {
@@ -4483,7 +4791,9 @@ class Game {
     this.audio.setAmbience(1 - this.rig.nightFactor * 0.6, this.waterProximity, swimMoving ? 1 : 0);
 
     // --- world streaming + fluid ticks ---
-    this.world.processUploads(2);
+    // chunk mesh uploads run on a per-frame time budget: smooth pacing at
+    // any render distance, full throughput while a backlog waits
+    this.world.processUploads(this.world.pendingResults.length > 48 ? 8 : 3);
     this.world.fluid.update(dt);
 
     // --- autosave ---
@@ -4938,7 +5248,7 @@ const UI = {
 // BOOT
 // ============================================================================
 const bootSettings = loadSettings() || {
-  quality: 'medium', renderDistance: 5, fov: 75, sensitivity: 1, volume: 0.8, muted: false,
+  quality: 'medium', renderDistance: 8, fov: 75, sensitivity: 1, volume: 0.8, muted: false,
 };
 const bootSave = loadSaveData();
 const bootSeed = bootSave ? bootSave.seed : ((Date.now() ^ (Math.random() * 0x7fffffff)) | 0);
