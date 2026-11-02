@@ -150,7 +150,7 @@
     <button id="btn-settings" class="mc gray">Settings</button>
     <button id="btn-howto" class="mc gray">How to Play</button>
   </div>
-  <div class="foot">Three.js · runs &amp; saves entirely in your browser</div>
+  <div class="foot">Three.js · flowing water · runs &amp; saves entirely in your browser</div>
 </div>
 
 <!-- Pause -->
@@ -175,7 +175,7 @@
         <button data-q="low">Low</button><button data-q="medium">Med</button><button data-q="high">High</button>
       </div>
     </div>
-    <div class="set-row"><label>Render distance</label><input type="range" id="set-rd" min="3" max="8" step="1" value="5"><span class="val" id="val-rd">5</span></div>
+    <div class="set-row"><label>Render distance</label><input type="range" id="set-rd" min="3" max="10" step="1" value="6"><span class="val" id="val-rd">6</span></div>
     <div class="set-row"><label>Field of view</label><input type="range" id="set-fov" min="60" max="100" step="1" value="75"><span class="val" id="val-fov">75°</span></div>
     <div class="set-row"><label>Mouse sensitivity</label><input type="range" id="set-sens" min="20" max="200" step="5" value="100"><span class="val" id="val-sens">1.0×</span></div>
     <div class="set-row"><label>Volume</label><input type="range" id="set-vol" min="0" max="100" step="5" value="80"><span class="val" id="val-vol">80%</span></div>
@@ -205,8 +205,10 @@
     <h3>Tips</h3>
     <table>
       <tr><td>Saves</td><td>Automatic — blocks, inventory &amp; position persist in this browser</td></tr>
-      <tr><td>Water</td><td>Dive in: swim, watch the waves, find the sea floor caustics</td></tr>
+      <tr><td>Flowing water</td><td>Water spreads, pours into holes and forms waterfalls. Two sources side by side make an infinite pool</td></tr>
+      <tr><td>Sponge</td><td>Place it to soak up water in a 5×5×5 area — the way to un-flood a build</td></tr>
       <tr><td>Mining</td><td>Stone drops cobblestone; everything you break goes to your inventory</td></tr>
+      <tr><td>Night</td><td>Your hand and arm follow the light — bright at noon, dim at midnight, blue underwater</td></tr>
     </table>
     <div class="modal-btns"><button id="btn-howto-done" class="mc">Done</button></div>
   </div>
@@ -216,8 +218,8 @@
 <div id="inventory" class="overlay hidden">
   <div class="inv-panel">
     <h3 id="inv-title">Inventory</h3>
-    <div id="creative-palette" class="hidden">
-      <h3>Creative Palette — click to grab a stack</h3>
+    <div id="creative-palette">
+      <h3>Block Palette — click to grab a stack</h3>
       <div class="inv-grid" id="palette-grid"></div>
       <div class="inv-sep"></div>
     </div>
@@ -262,12 +264,18 @@ const PAD = 1, PX = CHUNK_X + PAD * 2, PZ = CHUNK_Z + PAD * 2, PY = WORLD_H + PA
 const B = {
   AIR: 0, GRASS: 1, DIRT: 2, STONE: 3, COBBLE: 4, SAND: 5, LOG: 6, LEAVES: 7,
   PLANKS: 8, GLASS: 9, BRICK: 10, SNOW: 11, GRAVEL: 12, TALLGRASS: 13,
-  FLOWER_RED: 14, FLOWER_YELLOW: 15, WATER: 16,
+  FLOWER_RED: 14, FLOWER_YELLOW: 15, WATER: 16, SPONGE: 24,
 };
+// Flowing water occupies ids 17..23 (level 7..1). Id 16 is a source (level 8).
+const WATER_MAX_ID = 23;
+const isWaterId = (id) => id >= B.WATER && id <= WATER_MAX_ID;
+const waterLevelOf = (id) => (id === B.WATER ? 8 : (isWaterId(id) ? 8 - (id - B.WATER) : 0));
+const waterIdForLevel = (l) => (l >= 8 ? B.WATER : B.WATER + (8 - l));
 const T = {
   GRASS_TOP: 0, GRASS_SIDE: 1, DIRT: 2, STONE: 3, COBBLE: 4, SAND: 5, LOG_SIDE: 6,
   LOG_TOP: 7, LEAVES: 8, PLANKS: 9, GLASS: 10, BRICK: 11, SNOW: 12, SNOW_SIDE: 13,
   GRAVEL: 14, TALLGRASS: 15, FLOWER_RED: 16, FLOWER_YELLOW: 17, BEDROCK: 18,
+  SPONGE: 19, ARM_SKIN: 20, WATER_TILE: 21,
 };
 
 // [px, nx, py, ny, pz, nz] atlas tiles per block (mirrors the worker table)
@@ -287,6 +295,8 @@ const TILES = {
   [B.TALLGRASS]: [15, 15, 15, 15, 15, 15],
   [B.FLOWER_RED]: [16, 16, 16, 16, 16, 16],
   [B.FLOWER_YELLOW]: [17, 17, 17, 17, 17, 17],
+  [B.SPONGE]: [19, 19, 19, 19, 19, 19],
+  [B.WATER]: [21, 21, 21, 21, 21, 21],
 };
 
 const BLOCK_NAME = {
@@ -294,21 +304,21 @@ const BLOCK_NAME = {
   [B.SAND]: 'Sand', [B.LOG]: 'Oak Log', [B.LEAVES]: 'Oak Leaves', [B.PLANKS]: 'Oak Planks',
   [B.GLASS]: 'Glass', [B.BRICK]: 'Bricks', [B.SNOW]: 'Snow', [B.GRAVEL]: 'Gravel',
   [B.TALLGRASS]: 'Tall Grass', [B.FLOWER_RED]: 'Poppy', [B.FLOWER_YELLOW]: 'Dandelion',
-  [B.WATER]: 'Water',
+  [B.WATER]: 'Water', [B.SPONGE]: 'Sponge',
 };
 const BLOCK_COLOR = {
   [B.GRASS]: 0x6faa46, [B.DIRT]: 0x8a6039, [B.STONE]: 0x8d8d8d, [B.COBBLE]: 0x7f7f7f,
   [B.SAND]: 0xd9cf9a, [B.LOG]: 0x6b4d2c, [B.LEAVES]: 0x3f7a2a, [B.PLANKS]: 0xb08a55,
   [B.GLASS]: 0xcfe8ef, [B.BRICK]: 0xa55a4a, [B.SNOW]: 0xf4f8fb, [B.GRAVEL]: 0x867f7a,
   [B.TALLGRASS]: 0x5f9c3e, [B.FLOWER_RED]: 0xd23c2f, [B.FLOWER_YELLOW]: 0xe8c62e,
-  [B.WATER]: 0x3f76c9,
+  [B.WATER]: 0x3f76c9, [B.SPONGE]: 0xc4b06a,
 };
 const SOUND_FAMILY = {
   [B.GRASS]: 'grass', [B.DIRT]: 'dirt', [B.STONE]: 'stone', [B.COBBLE]: 'stone',
   [B.SAND]: 'sand', [B.LOG]: 'wood', [B.LEAVES]: 'leaves', [B.PLANKS]: 'wood',
   [B.GLASS]: 'glass', [B.BRICK]: 'stone', [B.SNOW]: 'sand', [B.GRAVEL]: 'dirt',
   [B.TALLGRASS]: 'grass', [B.FLOWER_RED]: 'grass', [B.FLOWER_YELLOW]: 'grass',
-  [B.WATER]: 'dirt',
+  [B.WATER]: 'dirt', [B.SPONGE]: 'sand',
 };
 
 // Seconds to mine by hand (the break system).
@@ -316,6 +326,7 @@ const HARDNESS = {
   [B.GRASS]: 0.45, [B.DIRT]: 0.4, [B.SAND]: 0.35, [B.STONE]: 1.5, [B.COBBLE]: 1.6,
   [B.LOG]: 0.9, [B.PLANKS]: 0.9, [B.LEAVES]: 0.2, [B.GLASS]: 0.25, [B.BRICK]: 1.6,
   [B.SNOW]: 0.15, [B.GRAVEL]: 0.4, [B.TALLGRASS]: 0.05, [B.FLOWER_RED]: 0.05, [B.FLOWER_YELLOW]: 0.05,
+  [B.SPONGE]: 0.25,
 };
 // What a block yields when broken (stone -> cobble, like the original).
 const DROPS = { [B.STONE]: B.COBBLE };
@@ -324,6 +335,7 @@ const BREAKABLE = new Set(Object.keys(HARDNESS).map(Number));
 const PLACEABLE = [
   B.GRASS, B.DIRT, B.STONE, B.COBBLE, B.SAND, B.LOG, B.LEAVES, B.PLANKS,
   B.GLASS, B.BRICK, B.SNOW, B.GRAVEL, B.TALLGRASS, B.FLOWER_RED, B.FLOWER_YELLOW,
+  B.WATER, B.SPONGE,
 ];
 const PLANT_IDS = new Set([B.TALLGRASS, B.FLOWER_RED, B.FLOWER_YELLOW]);
 const STACK_MAX = 64;
@@ -337,8 +349,8 @@ const SETTINGS_KEY = 'voxelcraft.settings.v1';
 
 const QUALITY_PRESETS = {
   low: { name: 'Low', waterDetail: 0.0, dpr: 1.0, clouds: false, particles: 80, renderDistance: 4 },
-  medium: { name: 'Medium', waterDetail: 0.5, dpr: 1.5, clouds: true, particles: 160, renderDistance: 5 },
-  high: { name: 'High', waterDetail: 1.0, dpr: 2.0, clouds: true, particles: 240, renderDistance: 6 },
+  medium: { name: 'Medium', waterDetail: 0.5, dpr: 1.5, clouds: true, particles: 160, renderDistance: 6 },
+  high: { name: 'High', waterDetail: 1.0, dpr: 2.0, clouds: true, particles: 240, renderDistance: 8 },
 };
 
 // ============================================================================
@@ -368,11 +380,15 @@ var PCX = 18, PCZ = 18, PCH = 66;
 var SEA = 28, SNOW = 47, STONE_L = 40;
 var AIR=0, GRASS=1, DIRT=2, STONE=3, COBBLE=4, SAND=5, LOG=6, LEAVES=7,
     PLANKS=8, GLASS=9, BRICK=10, SNOWB=11, GRAVEL=12, TALLGRASS=13,
-    FLOWER_R=14, FLOWER_Y=15, WATER=16;
+    FLOWER_R=14, FLOWER_Y=15, WATER=16, SPONGE=24;
+
+// Flowing water: ids 17..23 carry level 7..1. Id 16 = source (level 8).
+function isWater(b) { return b >= WATER && b <= 23; }
+function wLevel(b) { return b === WATER ? 8 : (isWater(b) ? 8 - (b - WATER) : 0); }
 
 var OP = new Uint8Array(256);
 OP[GRASS]=OP[DIRT]=OP[STONE]=OP[COBBLE]=OP[SAND]=OP[LOG]=OP[LEAVES]=
-OP[PLANKS]=OP[BRICK]=OP[SNOWB]=OP[GRAVEL]=1;
+OP[PLANKS]=OP[BRICK]=OP[SNOWB]=OP[GRAVEL]=OP[SPONGE]=1;
 
 // ---- deterministic noise ---------------------------------------------------
 function hash2i(x, z, seed) {
@@ -532,6 +548,7 @@ TILES[GRAVEL] = [14,14,14,14,14,14];
 TILES[TALLGRASS] = [15,15,15,15,15,15];
 TILES[FLOWER_R]  = [16,16,16,16,16,16];
 TILES[FLOWER_Y]  = [17,17,17,17,17,17];
+TILES[SPONGE]    = [19,19,19,19,19,19];
 
 var ATLAS_N = 8;
 var INSET = 0.25 / 16;
@@ -551,7 +568,7 @@ function meshChunk(padded) {
 
   var o = { p: [], u: [], c: [], i: [] };
   var fo = { p: [], u: [], c: [], i: [], s: [] };
-  var w = { p: [], u: [], d: [], i: [] };
+  var w = { p: [], u: [], d: [], l: [], i: [] };
 
   function hash3f(x, y, z) {
     var h = Math.imul(x, 0x27d4eb2d) ^ Math.imul(y, 0x9e3779b9) ^ Math.imul(z, 0x165667b1);
@@ -620,8 +637,16 @@ function meshChunk(padded) {
 
   function waterDepth(x, y, z) {
     var d = 1;
-    while (d < 16 && gp(x, y - d, z) === WATER) d++;
+    while (d < 16 && isWater(gp(x, y - d, z))) d++;
     return d;
+  }
+
+  // Surface height of a water cell. Sources (and cells under water, i.e.
+  // waterfall columns) render full height; flowing cells slope down by level.
+  function waterHeight(x, y, z, b) {
+    if (isWater(gp(x, y + 1, z))) return 0.875; // falling column stays full
+    var lv = wLevel(b);
+    return lv >= 8 ? 0.875 : Math.max(0.11, 0.875 * lv / 8);
   }
 
   for (var x = 0; x < CX; x++) {
@@ -630,41 +655,74 @@ function meshChunk(padded) {
         var b = padded[((x + 1) * PCZ + (z + 1)) * PCH + (y + 1)];
         if (b === AIR) continue;
 
-        if (b === WATER) {
+        if (isWater(b)) {
+          var lv = wLevel(b);
           var above = gp(x, y + 1, z);
-          var topH = (above === WATER) ? 1.0 : 0.875;
-          if (above !== WATER && !OP[above]) {
+          var topH = waterHeight(x, y, z, b);
+          // depth drives the shader's shallow->deep colour ramp and foam:
+          // falling columns read as deep blue water with foam only at the
+          // lip and base; sources use their true column depth; thin flowing
+          // cells stay shallow so they foam like rapids.
+          var dep;
+          if (isWater(above)) dep = 4;
+          else if (lv >= 8) dep = waterDepth(x, y, z);
+          else dep = 1;
+          if (!isWater(above) && !OP[above]) {
             var base = w.p.length / 3;
-            var dep = waterDepth(x, y, z);
-            w.p.push(x, y + 0.875, z + 1,  x + 1, y + 0.875, z + 1,  x + 1, y + 0.875, z,  x, y + 0.875, z);
+            w.p.push(x, y + topH, z + 1,  x + 1, y + topH, z + 1,  x + 1, y + topH, z,  x, y + topH, z);
             w.u.push(0, 0, 1, 0, 1, 1, 0, 1);
             w.d.push(dep, dep, dep, dep);
+            w.l.push(lv, lv, lv, lv);
             w.i.push(base, base + 1, base + 2, base, base + 2, base + 3);
           }
           var below = gp(x, y - 1, z);
-          if (below !== WATER && !OP[below]) {
+          if (!isWater(below) && !OP[below]) {
             var bb = w.p.length / 3;
             w.p.push(x, y, z,  x + 1, y, z,  x + 1, y, z + 1,  x, y, z + 1);
             w.u.push(0, 0, 1, 0, 1, 1, 0, 1);
             w.d.push(1, 1, 1, 1);
+            w.l.push(lv, lv, lv, lv);
             w.i.push(bb, bb + 1, bb + 2, bb, bb + 2, bb + 3);
           }
+          // side faces: skip when the neighbour is water at an equal-or-higher
+          // level; when the neighbour is lower water, only the exposed band
+          // between the two surfaces is drawn (smooth cascades).
           for (var f = 0; f < 6; f++) {
             if (f === 2 || f === 3) continue;
             var face = FACES[f];
             var nb = gp(x + face.d[0], y + face.d[1], z + face.d[2]);
-            if (nb === WATER || OP[nb]) continue;
+            if (isWater(nb)) {
+              var nLv = wLevel(nb);
+              if (nLv >= lv) continue;
+              var nH = waterHeight(x + face.d[0], y, z + face.d[2], nb);
+              if (nH >= topH - 0.001) continue;
+              var bs1 = w.p.length / 3;
+              var y0 = y + nH, y1 = y + topH;
+              if (f === 0 || f === 1) {
+                var ax = x + (face.d[0] > 0 ? 1 : 0);
+                w.p.push(ax, y0, z,  ax, y0, z + 1,  ax, y1, z + 1,  ax, y1, z);
+              } else {
+                var az = z + (face.d[2] > 0 ? 1 : 0);
+                w.p.push(x, y0, az,  x + 1, y0, az,  x + 1, y1, az,  x, y1, az);
+              }
+              w.u.push(0, 0, 1, 0, 1, 1, 0, 1);
+              w.d.push(dep, dep, dep, dep);
+              w.l.push(lv, lv, lv, lv);
+              w.i.push(bs1, bs1 + 1, bs1 + 2, bs1, bs1 + 2, bs1 + 3);
+              continue;
+            }
+            if (OP[nb]) continue;
             var bs = w.p.length / 3;
-            var dep2 = waterDepth(x, y, z);
             if (f === 0 || f === 1) {
-              var ax = x + (face.d[0] > 0 ? 1 : 0);
-              w.p.push(ax, y, z,  ax, y, z + 1,  ax, y + topH, z + 1,  ax, y + topH, z);
+              var ax2 = x + (face.d[0] > 0 ? 1 : 0);
+              w.p.push(ax2, y, z,  ax2, y, z + 1,  ax2, y + topH, z + 1,  ax2, y + topH, z);
             } else {
-              var az = z + (face.d[2] > 0 ? 1 : 0);
-              w.p.push(x, y, az,  x + 1, y, az,  x + 1, y + topH, az,  x, y + topH, az);
+              var az2 = z + (face.d[2] > 0 ? 1 : 0);
+              w.p.push(x, y, az2,  x + 1, y, az2,  x + 1, y + topH, az2,  x, y + topH, az2);
             }
             w.u.push(0, 0, 1, 0, 1, 1, 0, 1);
-            w.d.push(dep2, dep2, dep2, dep2);
+            w.d.push(dep, dep, dep, dep);
+            w.l.push(lv, lv, lv, lv);
             w.i.push(bs, bs + 1, bs + 2, bs, bs + 2, bs + 3);
           }
           continue;
@@ -696,7 +754,7 @@ function meshChunk(padded) {
   return {
     o: { p: new Float32Array(o.p), u: new Float32Array(o.u), c: new Uint8Array(o.c), i: new Uint32Array(o.i) },
     f: { p: new Float32Array(fo.p), u: new Float32Array(fo.u), c: new Uint8Array(fo.c), i: new Uint32Array(fo.i), s: new Float32Array(fo.s) },
-    w: { p: new Float32Array(w.p), u: new Float32Array(w.u), d: new Float32Array(w.d), i: new Uint32Array(w.i) },
+    w: { p: new Float32Array(w.p), u: new Float32Array(w.u), d: new Float32Array(w.d), l: new Float32Array(w.l), i: new Uint32Array(w.i) },
   };
 }
 
@@ -714,7 +772,7 @@ self.onmessage = function (e) {
     var transfers = [
       res.o.p.buffer, res.o.u.buffer, res.o.c.buffer, res.o.i.buffer,
       res.f.p.buffer, res.f.u.buffer, res.f.c.buffer, res.f.i.buffer, res.f.s.buffer,
-      res.w.p.buffer, res.w.u.buffer, res.w.d.buffer, res.w.i.buffer,
+      res.w.p.buffer, res.w.u.buffer, res.w.d.buffer, res.w.l.buffer, res.w.i.buffer,
     ];
     self.postMessage({ t: 'mesh', cx: msg.cx, cz: msg.cz, o: res.o, f: res.f, w: res.w, rev: msg.rev }, transfers);
     return;
@@ -903,6 +961,40 @@ function buildAtlas(seed = 1337) {
     const blob = valueNoiseTile(px, py, 2, 0.5);
     const c = blob > 0.5 ? rgb(0x4a4a4a) : rgb(0x2e2e2e);
     return speckle(c, rgb(0x1c1c1c), rgb(0x616161), 0.8);
+  });
+
+  // Sponge — dried sea sponge: warm yellow with dark pores
+  paint(T.SPONGE, (px, py) => {
+    const pore = valueNoiseTile(px, py, 4, 9.25);
+    if (pore > 0.78) return mix(rgb(0x8a6d35), rgb(0x6e5628), rng() * 0.5);
+    const base = speckle(rgb(0xc4b06a), rgb(0xb09a55), rgb(0xd8c684), 0.9);
+    if (pore < 0.16) return mix(base, rgb(0x9a7f3d), 0.7);
+    return base;
+  });
+
+  // First-person arm: bottom ~60% is bare skin, top ~40% is the teal shirt
+  // sleeve (long faces are mapped fist-end = v0, shoulder = v1).
+  paint(T.ARM_SKIN, (px, py) => {
+    if (py <= 6) {
+      // sleeve with a knitted texture and a darker cuff at the boundary
+      if (py === 6) return rgb(0x2e5b63);
+      const knit = valueNoiseTile(px, py, 5, 12.5);
+      return mix(rgb(0x3d818c), rgb(0x2c6672), knit * 0.7 + rng() * 0.3);
+    }
+    if (py === 7) return rgb(0xb98563); // cuff edge shading
+    // skin with subtle knuckle speckle
+    const skin = speckle(rgb(0xc98e6b), rgb(0xb97f5e), rgb(0xd9a07c), 0.55);
+    return skin;
+  });
+
+  // Water block icon / held cube: layered blue bands with light crests
+  paint(T.WATER_TILE, (px, py) => {
+    const wave = Math.sin((py + Math.sin(px / 2.2) * 1.6) * 0.9);
+    const t = 0.5 + wave * 0.28;
+    let c = mix(rgb(0x2f6ec4), rgb(0x54a8de), t);
+    if (py % 5 === 2 && px % 4 !== 1) c = mix(c, rgb(0x9fd4ef), 0.45);
+    if (py === 0 || py === 15) c = mix(c, rgb(0x1c4a8c), 0.4);
+    return mix(c, rgb(0x77b6e2), rng() * 0.12);
   });
 
   function hashTile(x, y, s) {
@@ -1272,15 +1364,21 @@ const WATER_VERT = `
   uniform float uWaveAmp;
 
   attribute float depth;
+  attribute float level;
 
   varying vec3 vWorldPos;
   varying vec3 vWaveNormal;
   varying float vDepth;
   varying float vWaveH;
+  varying float vLevel;
 
   void main() {
     vec4 wp = modelMatrix * vec4(position, 1.0);
     float t = uTime;
+
+    // flowing water gets proportionally flatter waves: a thin film cannot
+    // carry 5cm swells, and full-size waves would poke through the terrain.
+    float flowAmp = uWaveAmp * clamp(level / 8.0 * 1.15, 0.14, 1.0);
 
     vec2 p = wp.xz;
     float h = 0.0;
@@ -1311,12 +1409,13 @@ const WATER_VERT = `
     dhx += a3 * k3 * d3.x * cos(ph3);
     dhz += a3 * k3 * d3.y * cos(ph3);
 
-    wp.y += h * uWaveAmp;
+    wp.y += h * flowAmp;
 
-    vWaveNormal = normalize(vec3(-dhx * uWaveAmp, 1.0, -dhz * uWaveAmp));
-    vWaveH = h * uWaveAmp;
+    vWaveNormal = normalize(vec3(-dhx * flowAmp, 1.0, -dhz * flowAmp));
+    vWaveH = h * flowAmp;
     vWorldPos = wp.xyz;
     vDepth = depth;
+    vLevel = level;
 
     gl_Position = projectionMatrix * viewMatrix * wp;
   }
@@ -1344,6 +1443,7 @@ const WATER_FRAG = `
   varying vec3 vWaveNormal;
   varying float vDepth;
   varying float vWaveH;
+  varying float vLevel;
 
   float hash12(vec2 p) {
     vec3 p3 = fract(vec3(p.xyx) * 0.1031);
@@ -1413,6 +1513,13 @@ const WATER_FRAG = `
       float band = smoothstep(0.48, 0.78, fn);
       float edge = 1.0 - smoothstep(0.55, 1.35, vDepth);
       foam = clamp(shore * band + edge * 0.85, 0.0, 1.0);
+      // flowing water reads as rapids: streaky white water sliding downstream
+      float flow = clamp(1.0 - vLevel / 8.0, 0.0, 1.0);
+      if (flow > 0.01) {
+        float streak = vnoise(vWorldPos.xz * 3.1 - vec2(uTime * 1.1, uTime * 0.2));
+        float streak2 = vnoise(vWorldPos.xz * 5.7 + vec2(uTime * 1.6, uTime * 0.4));
+        foam = clamp(foam + flow * (0.30 + smoothstep(0.55, 0.85, streak) * 0.55 + streak2 * 0.18), 0.0, 0.92);
+      }
     }
 
     float glint = smoothstep(0.80, 0.96, ripple(vWorldPos.xz * 2.6, uTime * 1.35));
@@ -1740,6 +1847,166 @@ class LightingRig {
 }
 
 // ============================================================================
+// FluidSim — Minecraft-style flowing water, main thread, fixed 0.2s ticks.
+//   * Id 16 is a SOURCE (level 8): never decays, always spreads.
+//   * Ids 17..23 are FLOWING cells at level 7..1 that continuously converge
+//     to "best inflow minus one" (or level 7 directly under a column).
+//   * Water prefers falling: a cell with air below pours down before it
+//     spreads sideways, which produces proper waterfalls.
+//   * Two sources flanking a flowing cell crystallise into a new source —
+//     the classic infinite-pool rule.
+// Cells only enter the queue when a neighbour changes, so a settled ocean
+// costs zero work. Each tick processes at most MAX_CELLS updates.
+// ============================================================================
+class FluidSim {
+  constructor(world) {
+    this.world = world;
+    this.queue = [];            // flat [x,y,z, x,y,z, ...]
+    this.queued = new Set();    // "x,y,z" dedupe
+    this.tickAcc = 0;
+    this.TICK = 0.2;
+    this.MAX_CELLS = 64;
+    this.onWaterfall = null;    // (x,y,z) fired when water pours into air
+  }
+
+  schedule(x, y, z) {
+    if (y < 0 || y >= WORLD_H) return;
+    const k = x + ',' + y + ',' + z;
+    if (this.queued.has(k)) return;
+    this.queued.add(k);
+    this.queue.push(x, y, z);
+  }
+
+  scheduleNeighbours(x, y, z) {
+    this.schedule(x, y, z);
+    this.schedule(x + 1, y, z);
+    this.schedule(x - 1, y, z);
+    this.schedule(x, y + 1, z);
+    this.schedule(x, y - 1, z);
+    this.schedule(x, y, z + 1);
+    this.schedule(x, y, z - 1);
+  }
+
+  clear() { this.queue.length = 0; this.queued.clear(); }
+  get pending() { return this.queue.length / 3; }
+
+  update(dt) {
+    this.tickAcc += dt;
+    if (this.tickAcc < this.TICK) return;
+    this.tickAcc -= this.TICK;
+    if (this.queue.length === 0) return;
+    let n = Math.min(this.MAX_CELLS, this.queue.length / 3);
+    while (n-- > 0 && this.queue.length >= 3) {
+      const x = this.queue.shift(), y = this.queue.shift(), z = this.queue.shift();
+      this.queued.delete(x + ',' + y + ',' + z);
+      this._processCell(x, y, z);
+    }
+  }
+
+  _processCell(x, y, z) {
+    const w = this.world;
+    if (!w.hasVoxelData(Math.floor(x / CHUNK_X), Math.floor(z / CHUNK_Z))) return;
+    const id = w.getVoxel(x, y, z);
+
+    if (isWaterId(id)) {
+      if (id === B.WATER) {           // source: permanent, spreads
+        this._spread(x, y, z, 8);
+        return;
+      }
+      // flowing: converge towards inflow level, possibly drying up
+      const wanted = this._inflowLevel(x, y, z);
+      if (wanted !== waterLevelOf(id)) {
+        const newId = wanted > 0 ? waterIdForLevel(wanted) : B.AIR;
+        w.setVoxelEdited(x, y, z, newId);
+        this.scheduleNeighbours(x, y, z);
+        if (wanted <= 0) return;       // dried: nothing further to spread
+      }
+      // infinite pool: flanked by two sources -> become a source
+      if (this._sourceNeighbours(x, y, z) >= 2) {
+        w.setVoxelEdited(x, y, z, B.WATER);
+        this.scheduleNeighbours(x, y, z);
+      }
+      const level = waterLevelOf(w.getVoxel(x, y, z));
+      if (level > 0) this._spread(x, y, z, level);
+      return;
+    }
+
+    // not water: can water flow in? (air or plants only)
+    if (id !== B.AIR && !PLANT_IDS.has(id)) return;
+    const wanted2 = this._inflowLevel(x, y, z);
+    if (wanted2 >= 1) {
+      w.setVoxelEdited(x, y, z, waterIdForLevel(wanted2));
+      this.scheduleNeighbours(x, y, z);
+    }
+  }
+
+  /** Level this cell should settle at from its inflow, or 0 for "dry". */
+  _inflowLevel(x, y, z) {
+    const w = this.world;
+    if (isWaterId(w.getVoxel(x, y + 1, z))) return 7;   // under a column
+    const belowMe = w.getVoxel(x, y - 1, z);
+    // bedrock level (y=0) has no void below — treat it as solid ground
+    const overDrop = y > 0 && (belowMe === B.AIR || PLANT_IDS.has(belowMe) || isWaterId(belowMe));
+    let max = 0;
+    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    for (const [dx, dz] of dirs) {
+      const nx = x + dx, nz = z + dz;
+      const n = w.getVoxel(nx, y, nz);
+      if (!isWaterId(n)) continue;
+      // Only water RESTING on something feeds sideways: a solid floor or a
+      // source body. Falling columns pour straight down — which is exactly
+      // what keeps waterfalls narrow, like Minecraft.
+      const belowN = w.getVoxel(nx, y - 1, nz);
+      const resting = belowN === B.WATER ||
+        (belowN !== B.AIR && !isWaterId(belowN) && !PLANT_IDS.has(belowN));
+      if (!resting) continue;
+      max = Math.max(max, waterLevelOf(n));
+    }
+    // Over a drop (air or water below), any inflow turns into a full falling
+    // column — a stream reaching a cliff edge pours off it, like MC.
+    if (overDrop) return max >= 1 ? 7 : 0;
+    return max - 1;
+  }
+
+  _sourceNeighbours(x, y, z) {
+    const w = this.world;
+    let n = 0;
+    if (w.getVoxel(x + 1, y, z) === B.WATER) n++;
+    if (w.getVoxel(x - 1, y, z) === B.WATER) n++;
+    if (w.getVoxel(x, y, z + 1) === B.WATER) n++;
+    if (w.getVoxel(x, y, z - 1) === B.WATER) n++;
+    return n;
+  }
+
+  _spread(x, y, z, level) {
+    const w = this.world;
+    if (y - 1 >= 0) {
+      const below = w.getVoxel(x, y - 1, z);
+      if (below === B.AIR || PLANT_IDS.has(below)) {
+        // pour down first — a waterfall grows one cell per tick
+        w.setVoxelEdited(x, y - 1, z, waterIdForLevel(7));
+        this.scheduleNeighbours(x, y - 1, z);
+        if (this.onWaterfall) this.onWaterfall(x, y - 1, z);
+        return;
+      }
+      if (isWaterId(below)) return;   // still falling: no sideways spread
+    }
+    // resting on something solid: spread sideways, one level weaker
+    if (level <= 1) return;
+    const spread = level - 1;
+    const dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    for (const [dx, dz] of dirs) {
+      const nx = x + dx, nz = z + dz;
+      const nb = w.getVoxel(nx, y, nz);
+      if (nb === B.AIR || PLANT_IDS.has(nb)) {
+        w.setVoxelEdited(nx, y, nz, waterIdForLevel(spread));
+        this.scheduleNeighbours(nx, y, nz);
+      }
+    }
+  }
+}
+
+// ============================================================================
 // World — chunk storage, worker pool, prioritized streaming, edit remeshing,
 // and the persistent edit log that powers the save system.
 // Player modifications are stored as a sparse diff against the generated
@@ -1760,6 +2027,7 @@ class World {
     this.materials = materials;
     this.onChunkMeshed = null;
     this.pendingResults = [];
+    this.fluid = new FluidSim(this);
     // ---- save-system state: sparse diff of player edits ----
     this.editMap = new Map();               // "x,y,z" -> block id
     this.editsByChunk = new Map();          // "cx,cz" -> Map(localIdx -> id)
@@ -1782,6 +2050,7 @@ class World {
     this.genQueue = [];
     this.meshQueue = [];
     this.pendingResults = [];
+    this.fluid.clear();
   }
 
   setRenderDistance(rd) {
@@ -1828,7 +2097,16 @@ class World {
   _applyEditsToChunk(c) {
     const m = this.editsByChunk.get(this.key(c.cx, c.cz));
     if (!m || !c.voxels) return;
-    for (const [idx, id] of m) c.voxels[idx] = id;
+    for (const [idx, id] of m) {
+      c.voxels[idx] = id;
+      // let the fluid sim re-settle around restored edits (dug channels,
+      // saved floods, removed sources)
+      const y = idx % WORLD_H;
+      const rest = (idx - y) / WORLD_H;
+      const lz = rest % CHUNK_Z;
+      const lx = (rest - lz) / CHUNK_Z;
+      this.fluid.scheduleNeighbours(c.cx * CHUNK_X + lx, y, c.cz * CHUNK_Z + lz);
+    }
   }
 
   // ---- voxel access -----------------------------------------------------------
@@ -1876,14 +2154,14 @@ class World {
   columnSurface(x, z) {
     for (let y = WORLD_H - 1; y >= 0; y--) {
       const v = this.getVoxel(x, y, z);
-      if (v !== 0 && v !== B.WATER) return y;
+      if (v !== 0 && !isWaterId(v)) return y;
     }
     return 0;
   }
 
   isSolidAt(x, y, z) {
     const v = this.getVoxel(Math.floor(x), Math.floor(y), Math.floor(z));
-    return v !== 0 && v !== B.WATER && !PLANT_IDS.has(v);
+    return v !== 0 && !isWaterId(v) && !PLANT_IDS.has(v);
   }
 
   // ---- streaming ----------------------------------------------------------------
@@ -2088,6 +2366,7 @@ class World {
       g.setAttribute('position', new THREE.BufferAttribute(m.w.p, 3));
       g.setAttribute('uv', new THREE.BufferAttribute(m.w.u, 2));
       g.setAttribute('depth', new THREE.BufferAttribute(m.w.d, 1));
+      g.setAttribute('level', new THREE.BufferAttribute(m.w.l, 1));
       g.setIndex(new THREE.BufferAttribute(m.w.i, 1));
       g.computeBoundingSphere();
       const mesh = new THREE.Mesh(g, this.materials.water);
@@ -2191,8 +2470,8 @@ class Player {
     const cz = Math.floor(this.position.z);
     const bodyBlock = this.world.getVoxel(cx, Math.floor(this.position.y + 0.6), cz);
     const eyeBlock = this.world.getVoxel(cx, Math.floor(this.position.y + PLAYER_EYE), cz);
-    this.inWater = bodyBlock === B.WATER;
-    this.headUnderwater = eyeBlock === B.WATER;
+    this.inWater = isWaterId(bodyBlock);
+    this.headUnderwater = isWaterId(eyeBlock);
     if (this.inWater && !this.wasInWater) this.enteredWater = 1;
     if (!this.inWater && this.wasInWater) this.leftWater = 1;
     this.wasInWater = this.inWater;
@@ -2357,7 +2636,7 @@ function raycastVoxels(world, origin, dir, maxDist) {
 
   for (let i = 0; i < 256; i++) {
     const block = world.getVoxel(x, y, z);
-    if (block !== 0 && block !== B.WATER) {
+    if (block !== 0 && !isWaterId(block)) {
       return { x, y, z, block, nx, ny, nz, ax: x + nx, ay: y + ny, az: z + nz, distance: t };
     }
     if (tMaxX < tMaxY && tMaxX < tMaxZ) {
@@ -2381,7 +2660,7 @@ class ParticleSystem {
     this.max = maxParticles;
     this.particles = [];
     for (let i = 0; i < maxParticles; i++) {
-      this.particles.push({ active: false, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, life: 0, maxLife: 1, size: 0.1 });
+      this.particles.push({ active: false, x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, life: 0, maxLife: 1, size: 0.1, buoyant: false, wobble: 0 });
     }
     this.dummy = new THREE.Object3D();
     this.tmpColor = new THREE.Color();
@@ -2495,11 +2774,52 @@ class ParticleSystem {
     }
   }
 
+  /** Rising air bubbles — used while swimming and under waterfalls. */
+  spawnBubbles(x, y, z, count = 3, spread = 0.5) {
+    const c = this.tmpColor.setHex(0xeafaff);
+    for (let i = 0; i < count; i++) {
+      const p = this._alloc();
+      if (!p) return;
+      p.x = x + (this.rng() - 0.5) * spread;
+      p.y = y + this.rng() * 0.3;
+      p.z = z + (this.rng() - 0.5) * spread;
+      p.vx = (this.rng() - 0.5) * 0.5;
+      p.vy = 0.3 + this.rng() * 0.7;
+      p.vz = (this.rng() - 0.5) * 0.5;
+      p.maxLife = 0.9 + this.rng() * 1.1;
+      p.life = p.maxLife;
+      p.size = 0.04 + this.rng() * 0.045;
+      p.buoyant = true;
+      p.wobble = this.rng() * Math.PI * 2;
+      this._setColor(this.particles.indexOf(p), c, 0.85 + this.rng() * 0.4);
+    }
+  }
+
+  /** Mist kicked up where flowing water pours into air (waterfall lips). */
+  spawnWaterfallMist(x, y, z) {
+    const c = this.tmpColor.setHex(0xcfeef4);
+    for (let i = 0; i < 4; i++) {
+      const p = this._alloc();
+      if (!p) return;
+      p.x = x + 0.2 + this.rng() * 0.6;
+      p.y = y + 0.1 + this.rng() * 0.5;
+      p.z = z + 0.2 + this.rng() * 0.6;
+      p.vx = (this.rng() - 0.5) * 1.4;
+      p.vy = 0.6 + this.rng() * 1.6;
+      p.vz = (this.rng() - 0.5) * 1.4;
+      p.maxLife = 0.45 + this.rng() * 0.4;
+      p.life = p.maxLife;
+      p.size = 0.05 + this.rng() * 0.06;
+      this._setColor(this.particles.indexOf(p), c, 0.55 + this.rng() * 0.4);
+    }
+  }
+
   _alloc() {
     const n = Math.min(this.particles.length, this.max);
     for (let i = 0; i < n; i++) {
       if (!this.particles[i].active) {
         this.particles[i].active = true;
+        this.particles[i].buoyant = false; // bubble flag only set by spawnBubbles
         return this.particles[i];
       }
     }
@@ -2521,11 +2841,20 @@ class ParticleSystem {
       if (!p.active) continue;
       p.life -= dt;
       if (p.life <= 0) { p.active = false; continue; }
-      p.vy -= 18 * dt;
-      p.x += p.vx * dt;
-      p.y += p.vy * dt;
-      p.z += p.vz * dt;
-      if (p.y < 0.02 && p.vy < 0) { p.y = 0.02; p.vy *= -0.3; p.vx *= 0.6; p.vz *= 0.6; }
+      if (p.buoyant) {
+        // bubbles rise, wobble and slow their sideways drift
+        p.vy += 9 * dt;
+        p.wobble += dt * 7;
+        p.x += (p.vx + Math.sin(p.wobble) * 0.25) * dt;
+        p.y += p.vy * dt;
+        p.z += p.vz * dt;
+      } else {
+        p.vy -= 18 * dt;
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.z += p.vz * dt;
+        if (p.y < 0.02 && p.vy < 0) { p.y = 0.02; p.vy *= -0.3; p.vx *= 0.6; p.vz *= 0.6; }
+      }
       const lifeT = p.life / p.maxLife;
       const s = p.size * (0.35 + lifeT * 0.65);
       d.position.set(p.x, p.y, p.z);
@@ -2791,7 +3120,7 @@ function loadSettings() {
     if (!s || typeof s !== 'object') return null;
     return {
       quality: ['low', 'medium', 'high'].includes(s.quality) ? s.quality : 'medium',
-      renderDistance: Math.max(3, Math.min(8, s.renderDistance || 5)),
+      renderDistance: Math.max(3, Math.min(10, s.renderDistance || 6)),
       fov: Math.max(60, Math.min(100, s.fov || 75)),
       sensitivity: Math.max(0.2, Math.min(2, s.sensitivity || 1)),
       volume: Math.max(0, Math.min(1, s.volume ?? 0.8)),
@@ -2998,22 +3327,54 @@ class Game {
     this.particles = new ParticleSystem(preset.particles, this.rng);
     this.scene.add(this.particles.mesh);
 
+    // fluid sim feedback: mist where water pours into air
+    this.world.fluid.onWaterfall = (x, y, z) => {
+      if (this.state !== 'playing') return;
+      if (this.rng() < 0.45) this.particles.spawnWaterfallMist(x, y, z);
+      if (this.rng() < 0.3) this.particles.spawnBubbles(x + 0.5, y + 0.3, z + 0.5, 2, 0.8);
+    };
+
     this.audio = new AudioSystem();
     this.audio.setMuted(opts.muted);
     this.audio.setVolume(opts.volume);
 
-    // ---- held item (block in hand, rendered over the world) ----
+    // ---- first-person view model: arm + held block, dynamically lit ----
     this.handScene = new THREE.Scene();
     this.handScene.add(this.camera);
     this.heldGroup = new THREE.Group();
     this.camera.add(this.heldGroup);
+    this.blockGroup = new THREE.Group();   // holds the block in front of the fist
+    this.heldGroup.add(this.blockGroup);
     this.heldMesh = null;
     this.heldBlockId = -1;
-    this.heldGroup.position.set(0.55, -0.5, -0.85);
-    this.heldGroup.rotation.set(0.18, -0.62, 0.06);
     this.heldGroup.scale.setScalar(0.4);
+    // hand material: unlit base, tinted every frame by the world's light rig
+    // (day/night, sun warmth, underwater blue, mining flash) — "hand lighting"
+    this.handMat = new THREE.MeshBasicMaterial({
+      map: atlas.texture, vertexColors: true, alphaTest: 0.4, fog: false,
+      side: THREE.DoubleSide,
+    });
+    this.armMesh = new THREE.Mesh(this._buildArmGeometry(), this.handMat);
+    this.armMesh.frustumCulled = false;
+    this.armMesh.renderOrder = 2;
+    this.heldGroup.add(this.armMesh);
+    this.armMesh.position.set(0.30, -0.32, 0.28);
+    this.armMesh.rotation.set(0.55, 0.65, -0.22);
+    this.blockGroup.position.set(0.03, 0.15, -0.30);
+    this.heldGroup.position.set(0.58, -0.52, -0.86);
+    this.heldGroup.rotation.set(0.16, -0.62, 0.06);
     this.swingT = 0;
     this.swingTimer = 0;
+    this.placeRecoil = 0;
+    this.handFlash = 0;
+    this.swayX = 0;
+    this.swayY = 0;
+    this.lastYaw = 0;
+    this.lastPitch = 0;
+    this.handTint = new THREE.Color(1, 1, 1);
+    this.uwHandTint = new THREE.Color(0x2e6f9e);
+    this.flashTint = new THREE.Color(1, 1, 1);
+    this.bubbleTimer = 0;
 
     // ---- state ----
     this.state = 'menu';
@@ -3118,18 +3479,22 @@ class Game {
 
   /** Find a scenic shoreline (water edge with land) — used for the menu test. */
   findShoreline() {
+    const walkDirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
     for (let r = 1; r <= 10; r++) {
       for (let dx = -r; dx <= r; dx++) {
         for (let dz = -r; dz <= r; dz++) {
           if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
           const x = dx * 4, z = dz * 4;
           for (let y = SEA_LEVEL - 2; y <= SEA_LEVEL + 3; y++) {
-            if (this.world.getVoxel(x, y, z) === B.WATER) {
-              // walk toward land
-              for (let s = 1; s <= 12; s++) {
-                const lx = x + s, lz = z;
-                if (this.world.getVoxel(lx, y, lz) !== B.WATER && this.world.getVoxel(lx, y, lz) !== 0) {
-                  return { x: lx + 0.5, y: y + 3, z: z + 0.5 };
+            if (isWaterId(this.world.getVoxel(x, y, z))) {
+              // walk toward land in each direction
+              for (const [wdx, wdz] of walkDirs) {
+                for (let s = 1; s <= 12; s++) {
+                  const lx = x + wdx * s, lz = z + wdz * s;
+                  const nb = this.world.getVoxel(lx, y, lz);
+                  if (!isWaterId(nb) && nb !== 0) {
+                    return { x: lx + 0.5, y: y + 3, z: lz + 0.5 };
+                  }
                 }
               }
             }
@@ -3161,7 +3526,7 @@ class Game {
       }
       this.update(dt);
       this.renderer.render(this.scene, this.camera);
-      if (this.heldMesh && this.heldGroup.visible && this.state === 'playing') {
+      if (this.state === 'playing') {
         this.renderer.autoClear = false;
         this.renderer.clearDepth();
         this.renderer.render(this.handScene, this.camera);
@@ -3542,6 +3907,7 @@ class Game {
     this.particles.spawnBlockBreak(hit.x, hit.y, hit.z, BLOCK_COLOR[id] || 0x888888);
     this.audio.digSound(SOUND_FAMILY[id] || 'stone');
     this.blocksBroken++;
+    this.handFlash = 1;   // the mining impact lights up the hand for a beat
     // collect the drop
     const drop = DROPS[id] !== undefined ? DROPS[id] : id;
     const added = addToInventory(drop, 1);
@@ -3575,7 +3941,7 @@ class Game {
     const { ax, ay, az } = hit;
     if (ay < 0 || ay >= WORLD_H) return;
     const existing = this.world.getVoxel(ax, ay, az);
-    if (existing !== B.AIR && existing !== B.WATER && !PLANT_IDS.has(existing)) return;
+    if (existing !== B.AIR && !isWaterId(existing) && !PLANT_IDS.has(existing)) return;
 
     // plants need soil
     if (PLANT_IDS.has(block)) {
@@ -3587,14 +3953,14 @@ class Game {
       }
     }
 
-    // don't place inside the player
+    // don't place inside the player (water and plants are not solid)
     const pxMin = this.player.position.x - PLAYER_HALF_W;
     const pxMax = this.player.position.x + PLAYER_HALF_W;
     const pyMin = this.player.position.y;
     const pyMax = this.player.position.y + PLAYER_HEIGHT;
     const pzMin = this.player.position.z - PLAYER_HALF_W;
     const pzMax = this.player.position.z + PLAYER_HALF_W;
-    const solid = !PLANT_IDS.has(block);
+    const solid = !PLANT_IDS.has(block) && block !== B.WATER;
     if (solid && ax + 1 > pxMin && ax < pxMax && ay + 1 > pyMin && ay < pyMax && az + 1 > pzMin && az < pzMax) return;
 
     if (!consumeSelected(this.mode === 'creative')) {
@@ -3602,14 +3968,51 @@ class Game {
       return;
     }
     this.world.setVoxelEdited(ax, ay, az, block);
-    this.particles.spawnPlace(ax, ay, az, BLOCK_COLOR[block] || 0x888888);
-    this.audio.placeSound(SOUND_FAMILY[block] || 'stone');
+    if (block === B.WATER) {
+      // a placed water block is a SOURCE — kick the fluid sim immediately
+      this.world.fluid.scheduleNeighbours(ax, ay, az);
+      this.audio.splash(0.6);
+      this.particles.spawnSplash(ax + 0.5, ay + 0.9, az + 0.5, 0.7);
+    } else if (block === B.SPONGE) {
+      this._spongeAbsorb(ax, ay, az);
+    } else {
+      this.particles.spawnPlace(ax, ay, az, BLOCK_COLOR[block] || 0x888888);
+      this.audio.placeSound(SOUND_FAMILY[block] || 'stone');
+      this.world.fluid.scheduleNeighbours(ax, ay, az);
+    }
     this.blocksPlaced++;
     this.invDirty = true;
     this.swingTimer = 0.28;
-    this._wakeWaterNeighbours(ax, ay, az);
+    this.placeRecoil = 1;
     UI.refreshHotbar();
     UI.buildHeld(this);
+  }
+
+  /** Sponge: soaks up every water cell in the surrounding 5x5x5 cube. */
+  _spongeAbsorb(x, y, z) {
+    let absorbed = 0;
+    for (let dy = -2; dy <= 2; dy++) {
+      for (let dx = -2; dx <= 2; dx++) {
+        for (let dz = -2; dz <= 2; dz++) {
+          const c = this.world.getVoxel(x + dx, y + dy, z + dz);
+          if (isWaterId(c)) {
+            this.world.setVoxelEdited(x + dx, y + dy, z + dz, B.AIR);
+            // wake each soaked cell's neighbours so the surviving flow
+            // re-evaluates its inflow and drains properly
+            this.world.fluid.scheduleNeighbours(x + dx, y + dy, z + dz);
+            absorbed++;
+          }
+        }
+      }
+    }
+    this.audio.placeSound('sand');
+    this.particles.spawnPlace(x, y, z, BLOCK_COLOR[B.SPONGE]);
+    if (absorbed > 0) {
+      this.particles.spawnSplash(x + 0.5, y + 1.0, z + 0.5, 0.8);
+      this.audio.splash(0.55);
+      UI.toast('Sponge absorbed ' + absorbed + (absorbed === 1 ? ' block' : ' blocks') + ' of water');
+    }
+    this.world.fluid.scheduleNeighbours(x, y, z);
   }
 
   _pickBlock() {
@@ -3649,17 +4052,55 @@ class Game {
 
   /** Removing/placing blocks near water re-meshes so shore foam updates. */
   _wakeWaterNeighbours(x, y, z) {
-    const dirs = [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]];
-    for (const [dx, dy, dz] of dirs) {
-      if (this.world.getVoxel(x + dx, y + dy, z + dz) === B.WATER) {
-        this.world.setVoxel(x + dx, y + dy, z + dz, B.WATER);
-      }
-    }
+    this.world.fluid.scheduleNeighbours(x, y, z);
   }
 
   // --------------------------------------------------------------------------
-  // held item (block in hand)
+  // first-person view model: arm + held block with dynamic hand lighting
   // --------------------------------------------------------------------------
+  /** Long skin/sleeve box: fist at -Z, shoulder at +Z, atlas-UV'd + shaded. */
+  _buildArmGeometry() {
+    const g = new THREE.BufferGeometry();
+    const pos = [], uv = [], col = [], idx = [];
+    const N = ATLAS_TILES, INSET = 0.25 / 16;
+    const tileUV = (tile, u, v) => {
+      const c = tile % N, r = Math.floor(tile / N);
+      return [(c + INSET + u * (1 - 2 * INSET)) / N, (N - r - 1 + INSET + v * (1 - 2 * INSET)) / N];
+    };
+    const W = 0.24, L = 0.80;
+    const h = W / 2;
+    // quad(): corners map to (u0,v0) (u1,v0) (u1,v1) (u0,v1)
+    const quad = (corners, tile, u0, u1, v0, v1, shade) => {
+      const base = pos.length / 3;
+      const quv = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]];
+      for (let k = 0; k < 4; k++) {
+        const c = corners[k];
+        pos.push(c[0], c[1], c[2]);
+        const t = tileUV(tile, quv[k][0], quv[k][1]);
+        uv.push(t[0], t[1]);
+        const s = shade * 255;
+        col.push(s, s, s);
+      }
+      idx.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    };
+    // Long faces: the first two corners are the FIST end (z=-L, tile bottom
+    // = skin) and the last two the SHOULDER end (z=0, tile top = sleeve), so
+    // the tile's v axis runs along the arm exactly.
+    quad([[-h, -h, -L], [-h, h, -L], [-h, h, 0], [-h, -h, 0]], T.ARM_SKIN, 0, 1, 0, 1, 0.74); // -X
+    quad([[h, -h, -L], [h, h, -L], [h, h, 0], [h, -h, 0]], T.ARM_SKIN, 0, 1, 0, 1, 0.74);   // +X
+    quad([[-h, h, -L], [h, h, -L], [h, h, 0], [-h, h, 0]], T.ARM_SKIN, 0, 1, 0, 1, 1.0);    // +Y top
+    quad([[-h, -h, -L], [h, -h, -L], [h, -h, 0], [-h, -h, 0]], T.ARM_SKIN, 0, 1, 0, 1, 0.55); // -Y bottom
+    // fist cap (-Z): sample only the skin band of the tile
+    quad([[-h, -h, -L], [h, -h, -L], [h, h, -L], [-h, h, -L]], T.ARM_SKIN, 0.1, 0.9, 0.06, 0.38, 0.92);
+    // shoulder cap (+Z): sleeve band
+    quad([[-h, -h, 0], [h, -h, 0], [h, h, 0], [-h, h, 0]], T.ARM_SKIN, 0.1, 0.9, 0.62, 0.94, 0.6);
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setAttribute('color', new THREE.BufferAttribute(new Uint8Array(col), 3, true));
+    g.setIndex(idx);
+    return g;
+  }
+
   _heldGeometryFor(blockId) {
     const g = new THREE.BufferGeometry();
     const pos = [], uv = [], col = [], idx = [];
@@ -3722,37 +4163,95 @@ class Game {
     if (id === this.heldBlockId) return;
     this.heldBlockId = id;
     if (this.heldMesh) {
-      this.heldGroup.remove(this.heldMesh);
+      this.blockGroup.remove(this.heldMesh);
       this.heldMesh.geometry.dispose();
       this.heldMesh = null;
     }
     if (id > 0 && TILES[id]) {
       this.heldMesh = new THREE.Mesh(this._heldGeometryFor(id), this.terrainMat);
       this.heldMesh.frustumCulled = false;
-      this.heldGroup.add(this.heldMesh);
-      this.heldGroup.visible = true;
-    } else {
-      this.heldGroup.visible = false;
+      this.heldMesh.renderOrder = 3;
+      // plants ride a touch higher so the arm reads as holding the stem
+      this.heldMesh.position.set(0, PLANT_IDS.has(id) ? 0.1 : 0.02, PLANT_IDS.has(id) ? 0.12 : 0);
+      this.blockGroup.add(this.heldMesh);
     }
   }
 
+  /** Per-frame "hand lighting": tint the arm with the world's light. */
+  _updateHandLight(dt) {
+    this.handFlash = Math.max(0, this.handFlash - dt * 5);
+    this.placeRecoil = Math.max(0, this.placeRecoil - dt * 5.5);
+    const rig = this.rig;
+    if (!rig) return;
+    const c = this.handTint;
+    // ambient-driven brightness with a touch of sun warmth / night coolness
+    const bright = 0.30 + rig.ambient * 0.80;
+    c.setRGB(bright, bright, bright);
+    const warm = rig.sunIntensity * 0.16;
+    c.r = Math.min(1, c.r + warm);
+    c.b = Math.min(1, c.b - warm * 0.35);
+    // underwater: let the sea tint the arm too
+    if (rig.underwaterBlend > 0.001) c.lerp(this.uwHandTint, rig.underwaterBlend * 0.55);
+    // impact flash: a quick bright pulse when the swing connects
+    if (this.handFlash > 0.001) c.lerp(this.flashTint, this.handFlash * 0.4);
+    this.handMat.color.copy(c);
+  }
+
   _updateHeld(dt) {
-    if (!this.heldMesh) return;
     if (this.swingTimer > 0) {
       this.swingTimer -= dt;
       this.swingT = Math.min(1, this.swingT + dt * 4.5);
       if (this.swingTimer <= 0) { this.swingT = 0; }
     } else if (this.mining.active || (this.breakHeld && this.currentHit && this.mode === 'creative')) {
-      // continuous swing while mining
+      // continuous swing while mining — flash the light at each impact apex
+      const prev = this.swingT;
       this.swingT = (this.swingT + dt * 3.6) % 1;
+      if (prev < 0.5 && this.swingT >= 0.5) this.handFlash = 1;
     } else {
       this.swingT = 0;
     }
     const s = Math.sin(this.swingT * Math.PI);
+
+    // view-model sway: the arm lags slightly behind look rotation
+    let dyaw = this.player.yaw - this.lastYaw;
+    if (dyaw > Math.PI) dyaw -= Math.PI * 2;
+    else if (dyaw < -Math.PI) dyaw += Math.PI * 2;
+    const dpitch = this.player.pitch - this.lastPitch;
+    this.lastYaw = this.player.yaw;
+    this.lastPitch = this.player.pitch;
+    const swayTX = THREE.MathUtils.clamp(-dyaw * 1.6, -0.09, 0.09);
+    const swayTY = THREE.MathUtils.clamp(dpitch * 1.2, -0.07, 0.07);
+    this.swayX += (swayTX - this.swayX) * Math.min(1, dt * 9);
+    this.swayY += (swayTY - this.swayY) * Math.min(1, dt * 9);
+
     const bobY = Math.sin(this.player.bobPhase * 2) * 0.03 * this.player.bobAmp;
     const bobX = Math.cos(this.player.bobPhase) * 0.025 * this.player.bobAmp;
-    this.heldGroup.position.set(0.55 + bobX, -0.5 + bobY - s * 0.22, -0.85 - s * 0.08);
-    this.heldGroup.rotation.set(0.18 - s * 0.85, -0.62 + s * 0.35, 0.06 + s * 0.1);
+    const hasBlock = !!this.heldMesh;
+
+    // with a block: arm to the right holding it up front. bare fist: closer
+    // to centre, angled in — a proper "empty hand" pose.
+    const baseX = hasBlock ? 0.58 : 0.46;
+    const baseY = hasBlock ? -0.52 : -0.40;
+    const baseZ = hasBlock ? -0.86 : -0.74;
+    const rec = this.placeRecoil;
+    this.heldGroup.position.set(
+      baseX + bobX + this.swayX,
+      baseY + bobY - s * 0.22 - rec * 0.05 + this.swayY * 0.6,
+      baseZ - s * 0.08 + rec * 0.10,
+    );
+    this.heldGroup.rotation.set(
+      0.16 - s * 0.85 - rec * 0.4 + this.swayY * 1.2,
+      (hasBlock ? -0.62 : -0.30) + s * 0.35 + this.swayX * 1.8,
+      0.06 + s * 0.10 + this.swayX * 1.4,
+    );
+
+    // the arm itself: shoulder enters from the bottom-right off-screen,
+    // fist reaching up toward centre — the classic Minecraft arm pose
+    this.armMesh.position.set(0.30 + this.swayX * 0.5, -0.32 - s * 0.10, 0.28 + s * 0.06);
+    this.armMesh.rotation.set(0.55 - s * 0.55 + this.swayY * 0.8, 0.65 + this.swayX * 0.9, -0.22 - s * 0.12);
+    this.armMesh.visible = true;
+
+    this._updateHandLight(dt);
   }
 
   // --------------------------------------------------------------------------
@@ -3830,7 +4329,7 @@ class Game {
       for (let dz = -7; dz <= 7; dz += 2) {
         for (let dy = -2; dy <= 2; dy += 2) {
           total++;
-          if (this.world.getVoxel(px + dx, py + dy, pz + dz) === B.WATER) water++;
+          if (isWaterId(this.world.getVoxel(px + dx, py + dy, pz + dz))) water++;
         }
       }
     }
@@ -3955,6 +4454,20 @@ class Game {
     // --- underwater screen tint ---
     UI.setUnderwater(this.player.headUnderwater && this.state === 'playing');
 
+    // --- bubbles while swimming underwater (breathing) ---
+    if (this.player.headUnderwater && this.state === 'playing') {
+      this.bubbleTimer -= dt;
+      if (this.bubbleTimer <= 0) {
+        this.bubbleTimer = 0.45 + Math.random() * 0.4;
+        this.particles.spawnBubbles(
+          this.player.position.x + (this.rng() - 0.5) * 0.3,
+          this.player.position.y + PLAYER_EYE - 0.15,
+          this.player.position.z + (this.rng() - 0.5) * 0.3,
+          2, 0.25,
+        );
+      }
+    }
+
     // --- particles ---
     this.particles.setLightTint(this.rig.sunColor, this.rig.ambient);
     this.particles.update(dt);
@@ -3969,8 +4482,9 @@ class Game {
     const swimMoving = this.player.inWater && this.state === 'playing' && Math.hypot(this.player.velocity.x, this.player.velocity.z) > 1.4;
     this.audio.setAmbience(1 - this.rig.nightFactor * 0.6, this.waterProximity, swimMoving ? 1 : 0);
 
-    // --- world streaming ---
+    // --- world streaming + fluid ticks ---
     this.world.processUploads(2);
+    this.world.fluid.update(dt);
 
     // --- autosave ---
     if (this.state === 'playing') {
@@ -4156,8 +4670,10 @@ const UI = {
     g.breakHeld = false;
     g.placeHeld = false;
     g._resetMining();
-    this.els.creativePalette.classList.toggle('hidden', g.mode !== 'creative');
-    this.els.invTitle.textContent = g.mode === 'creative' ? 'Creative Inventory' : 'Inventory';
+    // the palette doubles as a survival starter kit — water, sponges and
+    // saplings-style extras live there so flowing-water play needs no grind
+    this.els.creativePalette.classList.toggle('hidden', false);
+    this.els.invTitle.textContent = 'Inventory' + (g.mode === 'creative' ? ' — creative' : '');
     this.els.inventory.classList.remove('hidden');
     this.refreshInventory();
     g.audio.uiClick();
@@ -4369,6 +4885,7 @@ const UI = {
     const p = g.player.position;
     const w = g.world.stats();
     const info = g.renderer.info;
+    const fluidQ = g.world.fluid.pending;
     this.els.debug.textContent =
       'FPS ' + g.fps + '  (' + (Math.round(g.frameMs * 10) / 10) + ' ms)\n' +
       'XYZ ' + p.x.toFixed(1) + ' / ' + p.y.toFixed(1) + ' / ' + p.z.toFixed(1) +
@@ -4377,7 +4894,8 @@ const UI = {
       '   ' + g._timeOfDayString() + '\n' +
       'chunks ' + w.loadedChunks + ' loaded / ' + w.meshedChunks + ' meshed / ' + w.pendingJobs + ' queued\n' +
       'draw calls ' + info.render.calls + '   tris ' + (info.render.triangles / 1000).toFixed(1) + 'k\n' +
-      'edits ' + g.world.getEditCount() + '   mode ' + g.mode + (g.player.flying ? ' (flying)' : '') +
+      'edits ' + g.world.getEditCount() + '   fluid ' + (fluidQ > 0 ? fluidQ + ' cells flowing' : 'settled') +
+      '   mode ' + g.mode + (g.player.flying ? ' (flying)' : '') +
       (g.player.inWater ? ' (in water)' : '');
   },
 
@@ -4461,7 +4979,7 @@ game.start();
 // ---- deterministic test hooks (console / automation) ----
 window.__voxel = {
   game,
-  version: 1,
+  version: 2,
   startContinue() {
     UI.showMenu(false);
     game.startPlaying(true);
