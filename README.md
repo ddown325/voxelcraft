@@ -1,12 +1,42 @@
 # VoxelCraft
 
-A Minecraft-style voxel sandbox that lives in **one HTML file**. Open `index.html` (or the GitHub Pages link below) and you're standing on an island with **flowing water**, a day/night cycle, timed block mining, a lit first-person arm, a full inventory, and a world that saves itself to your browser.
+A Minecraft-style voxel sandbox that lives in **one HTML file**. Open `index.html` (or the GitHub Pages link below) and you're standing on an island with **flowing water**, a day/night cycle, a **survival mode** with hearts and drowning, **TNT**, **falling sand**, ores, 30 new blocks, timed block mining, a chunky lit first-person arm, a full inventory, and a world that saves itself to your browser.
 
 **▶ Play it:** <https://ddown325.github.io/voxelcraft/>
 
-![Waterfall](screenshots/flow.jpg)
+![Survival](screenshots/survival.jpg)
 
-## What's new in v3 — the current update
+## What's new in v4 — the current update
+
+### Survival mode, for real
+- **Hearts and air**: 10 hearts (20 HP) and a 10-bubble air meter above the hotbar. **Fall damage**, **drowning** when your air runs out, **cactus pricks**, **TNT blasts** and **the void** all hurt. You **regenerate** slowly when out of danger for 6 seconds.
+- **Death screen** — "YOU DIED" with the cause, a Respawn button (back at spawn, full health) and Title Screen. Damage flashes a red vignette and jolts the hearts.
+- Survival is **earned**: the creative palette is hidden, flight is disabled, mining takes time and every placed block is consumed. A small starter kit (planks, glass, water, sponge, TNT) gets you building. Switch to creative any time with **V**.
+
+### 30 new blocks & three new block systems
+- **Ores generate underground**: coal, iron, gold and diamond in 2×2×2 veins (diamonds deepest, y ≤ 12), plus a proper rugged **bedrock** floor that's unbreakable.
+- **Falling sand & gravel**: unsupported sand becomes a falling entity, splashes down through water, and settles on the ground — mine carefully underneath.
+- **TNT**: mine it in survival to light the fuse — it flashes, swells, then **explodes** a ~3.6-block crater with a flash + smoke column, a boom, camera shake and knockback. **Chain reactions** detonate neighbours; obsidian and bedrock resist; water absorbs the blast.
+- New blocks: coal/iron/gold/diamond ore, bedrock, stone bricks, mossy cobblestone, sandstone, obsidian, ice (**slippery!**), clay, glowstone, **birch** & **spruce** logs/leaves/planks (spruce forests claim the high ground), 7 wool colours, cactus (**pricks!**), dead bush, pumpkin, bookshelf and TNT — all with procedural pixel-art textures.
+
+### Water: gaps and mixing fixed for good
+- **No more texture gaps in the water.** Wave amplitude is now driven by a **corner-averaged level** — two neighbouring cells compute *identical* values at their shared corners, so the displaced surface is continuous across every cell and chunk border. Verified seam-free.
+- **No more water mixing/tearing.** Vertex wave phases are now a pure function of world position and time — the old per-cell flow advection desynced phases at shared corners and slowly tore the surface open. The visible current (advected ripples, directional foam streaks, churn on falls) lives on in the fragment stage, where it can't open gaps.
+
+### A properly chunky arm
+The arm is now genuinely **Steve-thick** — the forearm and fist boxes roughly doubled in cross-section, with a wider knuckle face, in the classic bottom-right pose with swing, sway, bob and place-recoil. No more skinny stick.
+
+### Better inventory icons
+The true-3D icon baker now renders at 144 px with a roomier classic angle and a **soft contact shadow** composited under each block — icons read as solid objects sitting in the slot, not flat stickers.
+
+### Movement: jump like a miner
+- **No auto step-up**: walking into a full block now stops you — **you must jump** (that's the point of stairs!). Swimming still lets you climb out onto the bank with a surface kick.
+- **Sneak** is a careful slow walk; **ice** has almost no grip, so momentum carries you.
+
+### Bigger render distance
+The slider now runs **4–28 chunks** (default 10) with the same budgeted worker streaming.
+
+## What was new in v3 — water that stops
 
 ### Water that actually stops (and knows why)
 Three "flow forever" bugs are dead, each verified by a regression test:
@@ -21,15 +51,14 @@ Three "flow forever" bugs are dead, each verified by a regression test:
 - Waterfalls render as **dense, near-opaque churning water**: fine vertical streaks up close, big slow white tongues that stay readable from far away, churn flags on every cell in a column, and a hard outward **splash-ring current** where the fall lands.
 - Fixed inverted face winding on two of the four water side planes — waterfalls used to render as flat glass slabs through the back-face path.
 
-### A proper chunky arm
+### A proper chunky arm *(v3)*
 The skinny stick is gone. The view model is now a **blocky forearm + wider fist** with knuckles, finger creases and a thumb wrap painted into the atlas, shaded per-face like terrain, in the classic bottom-right Minecraft pose. Bare fist and held-block poses are both tuned, and the dynamic lighting (day/night, sun warmth, underwater tint, mining flash) carries over.
 
-### True 3D inventory icons
+### True 3D inventory icons *(v3)*
 Every item icon is now an **actual 3D render**: an offscreen WebGL pass snapshots each block with the game's own atlas and face shading — identical to how the held block looks — instead of a skewed 2D sketch. (Falls back to the old 2D icons if a second GL context can't be created.)
 
-### Huge render distance
-- The slider now runs **4–20 chunks** (presets 4 / 8 / 12), with adaptive fog.
-- Worker pool scales with your CPU (up to 6), mesh uploads run on a **per-frame time budget**, the streaming scan only runs when you cross a chunk boundary, and far chunks **free their GPU meshes** while keeping voxel data — heap stays flat at ~25 MB even at 20 chunks.
+### Huge render distance *(v3)*
+- Worker pool scales with your CPU (up to 6), mesh uploads run on a **per-frame time budget**, the streaming scan only runs when you cross a chunk boundary, and far chunks **free their GPU meshes** while keeping voxel data — heap stays flat even at big distances.
 
 ## What was new in v2 — the water update
 
@@ -73,7 +102,7 @@ Every water surface is a single custom shader — no cubemaps, no render targets
 ### Inventory
 - 9-slot hotbar (keys 1–9 / scroll wheel) + 27-slot storage opened with **E**.
 - Pick up / place / swap / merge stacks, right-click to split, shift-click to quick-move.
-- **Creative mode** (V): instant break, infinite stacks. The palette includes every block — plus water and sponge.
+- **Creative mode** (V): instant break, infinite stacks, flight (F / double-space), and the palette with every block — plus water and sponge. Survival hides the palette: mine what you place.
 
 ### Saves
 The whole world persists to `localStorage` — blocks you placed or broke (including every flow level) are stored as a **sparse diff against the generated terrain** and re-applied the instant a chunk regenerates, at which point the fluid sim re-settles around them. Player position, look, inventory, time of day and mode all round-trip. Autosave every 20 s, on pause, and on tab close.
@@ -100,10 +129,11 @@ Day/night cycle with sunrise palettes, stars and a moon; drifting blocky clouds;
 | Middle click | Pick block |
 | `1`–`9` / wheel | Hotbar |
 | `E` | Inventory |
-| `Space` | Jump / swim up · double-tap to fly |
+| `Space` | Jump — you must jump up full blocks · swim up · double-tap to fly (creative) |
 | `Shift` | Sneak / descend |
 | `Ctrl` | Sprint |
 | `V` | Toggle creative mode |
+| `F` | Toggle flight (creative only) |
 | `F3` | Debug overlay |
 | `Esc` | Pause |
 
@@ -124,7 +154,9 @@ No build, no install — open `index.html` in any modern desktop browser, or ser
 
 | | |
 | --- | --- |
-| ![Flowing water](screenshots/flow.jpg) | ![Waterfall](screenshots/waterfall.jpg) |
+| ![Survival](screenshots/survival.jpg) | ![Rapids](screenshots/rapids.jpg) |
+| ![Blocks](screenshots/blocks.jpg) | ![TNT](screenshots/tnt.jpg) |
+| ![Water level](screenshots/water-level.jpg) | ![Waterfall](screenshots/waterfall.jpg) |
 | ![Shoreline](screenshots/water.jpg) | ![Underwater](screenshots/underwater.jpg) |
 | ![Mining](screenshots/mining.jpg) | ![Inventory](screenshots/inventory.jpg) |
 
