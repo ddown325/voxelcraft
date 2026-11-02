@@ -3024,6 +3024,7 @@ class Game {
     this.orbitCenter = new THREE.Vector3(8, 40, 8);
     this.menuOrbitT = 0;
     this.spawnReady = false;
+    this.awaitingSpawn = false;
     this.spawn = new THREE.Vector3(0.5, 40, 0.5);
     this.everPlayed = false;
 
@@ -3089,8 +3090,7 @@ class Game {
           const ground = this.world.getVoxel(Math.floor(x), h, Math.floor(z));
           if (h < SEA_LEVEL + 6 && (ground === B.GRASS || ground === B.SAND)) {
             this.spawn.set(x + 0.5, h + 1.2, z + 0.5);
-            this.spawnReady = true;
-            if (!this.savedPlayer) this.orbitCenter.copy(this.spawn);
+            this._onSpawnFound();
             return;
           }
           if (!landFallback && ground === B.GRASS) {
@@ -3101,8 +3101,18 @@ class Game {
     }
     if (landFallback) {
       this.spawn.copy(landFallback);
-      this.spawnReady = true;
-      if (!this.savedPlayer) this.orbitCenter.copy(this.spawn);
+      this._onSpawnFound();
+    }
+  }
+
+  _onSpawnFound() {
+    this.spawnReady = true;
+    if (!this.savedPlayer) this.orbitCenter.copy(this.spawn);
+    // a start is waiting on a verified spawn point — land the player now
+    if (this.awaitingSpawn && this.state === 'playing') {
+      this.awaitingSpawn = false;
+      this.player.teleport(this.spawn.x, this.spawn.y + 0.5, this.spawn.z, Math.PI * 0.25);
+      this._updateStreamingCenter();
     }
   }
 
@@ -3174,7 +3184,15 @@ class Game {
       this.player.flying = !!sp.flying;
     } else {
       if (!this.spawnReady) this._tryFindSpawn();
-      this.player.teleport(this.spawn.x, this.spawn.y + 0.5, this.spawn.z, Math.PI * 0.25);
+      if (this.spawnReady) {
+        this.player.teleport(this.spawn.x, this.spawn.y + 0.5, this.spawn.z, Math.PI * 0.25);
+      } else {
+        // no verified surface for THIS world yet — hover safely until the
+        // spawn scan lands a real grass column (never trust stale coords)
+        this.awaitingSpawn = true;
+        this.player.teleport(0.5, 45, 0.5, Math.PI * 0.25);
+        this.player.flying = true;
+      }
     }
     this._requestPointerLock();
     this._updateStreamingCenter();
@@ -3228,6 +3246,8 @@ class Game {
     this.scene.add(this.world.group);
     this.player = new Player(this.world);
     this.spawnReady = false;
+    this.awaitingSpawn = false;
+    this.spawn.set(0.5, 40, 0.5); // never inherit another seed's coordinates
     this.blocksPlaced = 0;
     this.blocksBroken = 0;
     this.dayT = 0.09;
@@ -3839,6 +3859,17 @@ class Game {
       }
 
       if (ready) {
+        // safety net: if the player somehow ended up embedded in solid ground
+        // (stale teleport, edge-case regen), lift them to the column surface
+        const fx = Math.floor(this.player.position.x);
+        const fz = Math.floor(this.player.position.z);
+        const fy = Math.floor(this.player.position.y);
+        if (this.world.isSolidAt(fx + 0.5, fy + 0.5, fz + 0.5) && this.world.isSolidAt(fx + 0.5, fy + 1.5, fz + 0.5)) {
+          const h = this.world.columnSurface(fx, fz);
+          this.player.position.y = h + 1.001;
+          this.player.velocity.set(0, 0, 0);
+        }
+
         const input = {
           forward: (this._keys.has('KeyW') ? 1 : 0) - (this._keys.has('KeyS') ? 1 : 0),
           right: (this._keys.has('KeyD') ? 1 : 0) - (this._keys.has('KeyA') ? 1 : 0),
